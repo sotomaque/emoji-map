@@ -9,10 +9,17 @@ import SwiftUI
 
 @main
 struct emoji_mapApp: App {
+    // Create shared instances of services
+    private let userPreferences = UserPreferences()
+    private let googlePlacesService = GooglePlacesService()
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(MapViewModel(googlePlacesService: GooglePlacesService()))
+                .environmentObject(MapViewModel(
+                    googlePlacesService: googlePlacesService,
+                    userPreferences: userPreferences
+                ))
         }
     }
 }
