@@ -12,6 +12,7 @@ struct emoji_mapApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(MapViewModel(googlePlacesService: GooglePlacesService()))
         }
     }
 }

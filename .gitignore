@@ -1,0 +1,5 @@
+# ios artifacts
+.DS_Store
+
+# env variables
+/emoji-map/config.plist
