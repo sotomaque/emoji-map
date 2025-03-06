@@ -85,6 +85,12 @@ struct Configuration {
         } else {
             logger.error("❌ ERROR: .env file not found in bundle")
             
+            // Check if we're running in a CI environment
+            if ProcessInfo.processInfo.environment["CI"] != nil || 
+               ProcessInfo.processInfo.environment["CI_XCODE_CLOUD"] != nil {
+                logger.notice("ℹ️ INFO: Running in CI environment, mock mode is expected")
+            }
+            
             // List all bundle resources to help debug
             if let resourcePaths = Bundle.main.paths(forResourcesOfType: nil, inDirectory: nil) as [String]? {
                 let resourceNames = resourcePaths.map { URL(fileURLWithPath: $0).lastPathComponent }
