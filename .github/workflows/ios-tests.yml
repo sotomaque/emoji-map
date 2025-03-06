@@ -23,21 +23,33 @@ jobs:
       - name: Resolve Swift Package Dependencies
         run: xcodebuild -resolvePackageDependencies -project emoji-map.xcodeproj
 
+      - name: Install xcpretty
+        run: gem install xcpretty
+
       - name: Determine Simulator Destination
         id: simulator
         run: |
-          # Get the first available iPhone simulator and its OS version
+          echo "Listing available simulators:"
+          xcrun simctl list devices available
+
+          # Get the first available iPhone simulator
           SIMULATOR_INFO=$(xcrun simctl list devices available | grep "iPhone" | head -n 1)
           if [ -z "$SIMULATOR_INFO" ]; then
             echo "No iPhone simulators found!" >&2
             exit 1
           fi
-          # Extract device name and OS version (e.g., "iPhone 15 (18.2)")
-          DEVICE_NAME=$(echo "$SIMULATOR_INFO" | sed -E 's/.*(iPhone[^)]*).*/\1/' | tr -d '()')
-          OS_VERSION=$(echo "$SIMULATOR_INFO" | grep -oE '\([0-9]+\.[0-9]+(\.[0-9]+)?\)' | tr -d '()' | head -n 1)
+
+          # Extract device name and OS version with robust parsing
+          DEVICE_NAME=$(echo "$SIMULATOR_INFO" | awk '{for (i=1; i<=NF; i++) if ($i ~ /^iPhone/) {print substr($0, index($0, $i)); exit}}' | sed 's/ (.*//')
+          OS_VERSION=$(echo "$SIMULATOR_INFO" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1)
+
+          if [ -z "$DEVICE_NAME" ] || [ -z "$OS_VERSION" ]; then
+            echo "Failed to parse device name or OS version from: $SIMULATOR_INFO" >&2
+            exit 1
+          fi
+
           DESTINATION="platform=iOS Simulator,name=$DEVICE_NAME,OS=$OS_VERSION"
           echo "Selected simulator: $DESTINATION"
-          # Set output for use in the next step
           echo "destination=$DESTINATION" >> $GITHUB_OUTPUT
 
       - name: Build and test
@@ -46,7 +58,8 @@ jobs:
             -project emoji-map.xcodeproj \
             -scheme emoji-map \
             -destination "${{ steps.simulator.outputs.destination }}" \
-            -resultBundlePath TestResults.xcresult
+            -resultBundlePath TestResults.xcresult \
+            | xcpretty
         env:
           DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
 
