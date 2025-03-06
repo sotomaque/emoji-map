@@ -90,7 +90,7 @@ The app follows the MVVM (Model-View-ViewModel) architecture pattern:
 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/emoji-map.git
+git clone https://github.com/sotomaque/emoji-map.git
 ```
 
 2. Open the project in Xcode
