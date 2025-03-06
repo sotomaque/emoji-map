@@ -26,44 +26,12 @@ jobs:
       - name: Install xcpretty
         run: gem install xcpretty
 
-      - name: Determine Simulator Destination
-        id: simulator
-        run: |
-          echo "Listing available simulators:"
-          xcrun simctl list devices available
-
-          # Parse the simulator list to find the first iPhone with its OS version
-          OS_VERSION=""
-          DEVICE_NAME=""
-          while IFS= read -r line; do
-            # Check for OS version header
-            if [[ "$line" =~ --\ iOS\ ([0-9]+\.[0-9]+(\.[0-9]+)?)\ -- ]]; then
-              OS_VERSION="${BASH_REMATCH[1]}"
-            # Check for an iPhone simulator line under the current OS version
-            elif [[ "$line" =~ ^[[:space:]]*(iPhone[^[:space:]]+[[:space:]][^[:space:]]+)[[:space:]]*\( ]]; then
-              DEVICE_NAME="${BASH_REMATCH[1]}"
-              # If we have both OS and device, stop here
-              if [ -n "$OS_VERSION" ] && [ -n "$DEVICE_NAME" ]; then
-                break
-              fi
-            fi
-          done < <(xcrun simctl list devices available)
-
-          if [ -z "$DEVICE_NAME" ] || [ -z "$OS_VERSION" ]; then
-            echo "Failed to find an iPhone simulator with an OS version!" >&2
-            exit 1
-          fi
-
-          DESTINATION="platform=iOS Simulator,name=$DEVICE_NAME,OS=$OS_VERSION"
-          echo "Selected simulator: $DESTINATION"
-          echo "destination=$DESTINATION" >> $GITHUB_OUTPUT
-
       - name: Build and test
         run: |
           xcodebuild test \
             -project emoji-map.xcodeproj \
             -scheme emoji-map \
-            -destination "${{ steps.simulator.outputs.destination }}" \
+            -destination "platform=iOS Simulator,name=iPhone 15,OS=18.1" \
             -resultBundlePath TestResults.xcresult \
             | xcpretty
         env:
