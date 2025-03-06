@@ -32,19 +32,25 @@ jobs:
           echo "Listing available simulators:"
           xcrun simctl list devices available
 
-          # Get the first available iPhone simulator
-          SIMULATOR_INFO=$(xcrun simctl list devices available | grep "iPhone" | head -n 1)
-          if [ -z "$SIMULATOR_INFO" ]; then
-            echo "No iPhone simulators found!" >&2
-            exit 1
-          fi
-
-          # Extract device name and OS version with robust parsing
-          DEVICE_NAME=$(echo "$SIMULATOR_INFO" | awk '{for (i=1; i<=NF; i++) if ($i ~ /^iPhone/) {print substr($0, index($0, $i)); exit}}' | sed 's/ (.*//')
-          OS_VERSION=$(echo "$SIMULATOR_INFO" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1)
+          # Parse the simulator list to find the first iPhone with its OS version
+          OS_VERSION=""
+          DEVICE_NAME=""
+          while IFS= read -r line; do
+            # Check for OS version header
+            if [[ "$line" =~ --\ iOS\ ([0-9]+\.[0-9]+(\.[0-9]+)?)\ -- ]]; then
+              OS_VERSION="${BASH_REMATCH[1]}"
+            # Check for an iPhone simulator line under the current OS version
+            elif [[ "$line" =~ ^[[:space:]]*(iPhone[^[:space:]]+[[:space:]][^[:space:]]+)[[:space:]]*\( ]]; then
+              DEVICE_NAME="${BASH_REMATCH[1]}"
+              # If we have both OS and device, stop here
+              if [ -n "$OS_VERSION" ] && [ -n "$DEVICE_NAME" ]; then
+                break
+              fi
+            fi
+          done < <(xcrun simctl list devices available)
 
           if [ -z "$DEVICE_NAME" ] || [ -z "$OS_VERSION" ]; then
-            echo "Failed to parse device name or OS version from: $SIMULATOR_INFO" >&2
+            echo "Failed to find an iPhone simulator with an OS version!" >&2
             exit 1
           fi
 

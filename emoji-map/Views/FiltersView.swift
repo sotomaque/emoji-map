@@ -122,14 +122,20 @@ struct FiltersView: View {
     }
     
     func togglePriceLevel(_ level: Int) {
+        // Create a mutable copy of the set for testing
+        var updatedPriceLevels = selectedPriceLevels
+        
         if selectedPriceLevels.contains(level) {
             // Don't allow deselecting all price levels
             if selectedPriceLevels.count > 1 {
-                selectedPriceLevels.remove(level)
+                updatedPriceLevels.remove(level)
             }
         } else {
-            selectedPriceLevels.insert(level)
+            updatedPriceLevels.insert(level)
         }
+        
+        // Update the state with the new set
+        selectedPriceLevels = updatedPriceLevels
     }
     
     func resetFilters() {
