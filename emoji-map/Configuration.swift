@@ -15,7 +15,7 @@ enum ConfigurationError: Error {
     var localizedDescription: String {
         switch self {
         case .missingConfigFile:
-            return "Configuration file (config.plist) not found."
+            return "Configuration file (Config.plist) not found."
         case .invalidConfigFormat:
             return "Configuration file format is invalid."
         case .missingAPIKey:
@@ -53,7 +53,7 @@ struct Configuration {
     
     // Attempt to fetch the real API key
     private static func fetchGooglePlacesAPIKey() throws -> String {
-        guard let path = Bundle.main.path(forResource: "config", ofType: "plist") else {
+        guard let path = Bundle.main.path(forResource: "Config", ofType: "plist") else {
             throw ConfigurationError.missingConfigFile
         }
         

@@ -14,6 +14,8 @@ struct PlaceDetailView: View {
     @State private var isAppearing = false
     @EnvironmentObject private var mapViewModel: MapViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var distanceUpdateTimer: Timer?
+    @State private var showMapAppActionSheet = false
     
     // Initialize with the place and create the view model with the shared service
     init(place: Place) {
@@ -40,6 +42,22 @@ struct PlaceDetailView: View {
                 
                 // MARK: Reviews
                 reviewsSection
+                
+                // Add a retry button if there's an error
+                if viewModel.error != nil && !viewModel.isLoading {
+                    Button(action: {
+                        viewModel.retryFetchDetails(for: place)
+                    }) {
+                        HStack {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Retry Loading Details")
+                        }
+                        .padding()
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                    .padding(.top, 20)
+                }
                 
                 Spacer()
             }
@@ -88,6 +106,14 @@ struct PlaceDetailView: View {
             // No need to use reflection anymore - the view model will use the shared service
             viewModel.fetchDetails(for: place)
             
+            // Calculate distance from user
+            viewModel.calculateDistanceFromUser(place: place, userLocation: mapViewModel.locationManager.location)
+            
+            // Set up a timer to update the distance periodically
+            distanceUpdateTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
+                updateDistance()
+            }
+            
             // Slight delay before showing content for smoother transition
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 isAppearing = true
@@ -100,6 +126,13 @@ struct PlaceDetailView: View {
                 // Make sure the place stays favorited in both view models
                 mapViewModel.objectWillChange.send()
             }
+            
+            // Notify the view model that the view is disappearing
+            viewModel.onViewDisappear()
+            
+            // Invalidate the timer when the view disappears
+            distanceUpdateTimer?.invalidate()
+            distanceUpdateTimer = nil
         }
         .alert(isPresented: $viewModel.showError, content: {
             Alert(
@@ -111,6 +144,11 @@ struct PlaceDetailView: View {
                 secondaryButton: .cancel()
             )
         })
+    }
+    
+    // Method to update the distance from the user to the place
+    private func updateDistance() {
+        viewModel.updateDistanceFromUser(place: place, userLocation: mapViewModel.locationManager.location)
     }
     
     private func toggleFavorite() {
@@ -228,6 +266,15 @@ struct PlaceDetailView: View {
             
             // Info pills
             HStack(spacing: 12) {
+                // Distance pill
+                if viewModel.distanceFromUser != nil {
+                    InfoPill(
+                        icon: "location.fill",
+                        text: viewModel.formattedDistance,
+                        color: .blue
+                    )
+                }
+                
                 // Price level pill
                 InfoPill(
                     icon: "dollarsign.circle.fill",
@@ -288,32 +335,139 @@ struct PlaceDetailView: View {
     }
     
     private var actionButtonsSection: some View {
-        HStack(spacing: 16) {
-            ActionButton(
-                title: viewModel.isFavorite ? "Remove Favorite" : "Add to Favorites",
-                icon: viewModel.isFavorite ? "star.slash.fill" : "star.fill",
-                foregroundColor: .white,
-                backgroundColor: viewModel.isFavorite ? .red : .blue,
-                action: {
-                    toggleFavorite()
+        VStack(spacing: 16) {
+            HStack(spacing: 16) {
+                ActionButton(
+                    title: viewModel.isFavorite ? "Remove Favorite" : "Add to Favorites",
+                    icon: viewModel.isFavorite ? "star.slash.fill" : "star.fill",
+                    foregroundColor: .white,
+                    backgroundColor: viewModel.isFavorite ? .red : .blue,
+                    action: {
+                        toggleFavorite()
+                    }
+                )
+                .disabled(viewModel.isLoading)
+                .opacity(viewModel.isLoading ? 0.7 : 1.0)
+                
+                ActionButton(
+                    title: "View on Map",
+                    icon: "map.fill",
+                    foregroundColor: .blue,
+                    backgroundColor: Color.blue.opacity(0.1),
+                    hasBorder: true,
+                    action: {
+                        // Use the default map app to view the location
+                        let defaultMapAppName = mapViewModel.preferences.defaultMapApp
+                        let installedApps = MapAppUtility.shared.getInstalledMapApps()
+                        
+                        // Find the default map app
+                        if let defaultApp = installedApps.first(where: { $0.rawValue == defaultMapAppName }) {
+                            // Use the default map app
+                            MapAppUtility.shared.openInMapApp(
+                                mapApp: defaultApp,
+                                coordinate: place.coordinate,
+                                name: place.name
+                            )
+                        } else if let firstApp = installedApps.first {
+                            // Use the first available map app if default is not found
+                            MapAppUtility.shared.openInMapApp(
+                                mapApp: firstApp,
+                                coordinate: place.coordinate,
+                                name: place.name
+                            )
+                        }
+                        
+                        // Dismiss the sheet after launching the map app
+                        dismiss()
+                    }
+                )
+                .disabled(viewModel.isLoading)
+                .opacity(viewModel.isLoading ? 0.7 : 1.0)
+                .contextMenu {
+                    // Context menu to choose a different map app
+                    Text("Open with...")
+                    
+                    ForEach(MapAppUtility.shared.getInstalledMapApps()) { app in
+                        Button {
+                            MapAppUtility.shared.openInMapApp(
+                                mapApp: app,
+                                coordinate: place.coordinate,
+                                name: place.name
+                            )
+                            dismiss()
+                        } label: {
+                            Label(app.rawValue, systemImage: "map.fill")
+                        }
+                    }
                 }
-            )
-            .disabled(viewModel.isLoading)
-            .opacity(viewModel.isLoading ? 0.7 : 1.0)
+            }
             
+            // Directions button
             ActionButton(
-                title: "View on Map",
-                icon: "map.fill",
-                foregroundColor: .blue,
-                backgroundColor: Color.blue.opacity(0.1),
-                hasBorder: true,
+                title: "Get Directions",
+                icon: "location.fill",
+                foregroundColor: .white,
+                backgroundColor: .green,
                 action: {
-                    // Dismiss the sheet and focus on this place on the map
-                    mapViewModel.selectedPlace = nil
+                    // Check if we should use the default map app or show options
+                    let defaultMapAppName = mapViewModel.preferences.defaultMapApp
+                    let installedApps = MapAppUtility.shared.getInstalledMapApps()
+                    
+                    // Find the default map app
+                    if let defaultApp = installedApps.first(where: { $0.rawValue == defaultMapAppName }) {
+                        // Use the default map app
+                        MapAppUtility.shared.openInMapApp(
+                            mapApp: defaultApp,
+                            coordinate: place.coordinate,
+                            name: place.name
+                        )
+                    } else {
+                        // Show action sheet to select map app
+                        showMapAppActionSheet = true
+                    }
                 }
             )
             .disabled(viewModel.isLoading)
             .opacity(viewModel.isLoading ? 0.7 : 1.0)
+            .contextMenu {
+                // Context menu to choose a different map app
+                Text("Open with...")
+                
+                ForEach(MapAppUtility.shared.getInstalledMapApps()) { app in
+                    Button {
+                        MapAppUtility.shared.openInMapApp(
+                            mapApp: app,
+                            coordinate: place.coordinate,
+                            name: place.name
+                        )
+                    } label: {
+                        Label(app.rawValue, systemImage: "location.fill")
+                    }
+                }
+            }
+            .confirmationDialog("Open in Maps", isPresented: $showMapAppActionSheet, titleVisibility: .visible) {
+                // Get installed map apps
+                ForEach(MapAppUtility.shared.getInstalledMapApps()) { app in
+                    Button(app.rawValue) {
+                        print("DEBUG: Selected map app: \(app.rawValue)")
+                        MapAppUtility.shared.openInMapApp(
+                            mapApp: app,
+                            coordinate: place.coordinate,
+                            name: place.name
+                        )
+                    }
+                }
+                
+                // Add a test button for debugging
+                Button("Test URL Schemes") {
+                    print("DEBUG: Testing URL schemes...")
+                    MapAppUtility.shared.testURLSchemes()
+                }
+                
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Choose a map app to get directions to \(place.name)")
+            }
         }
         .padding(.horizontal)
         .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)

@@ -2,15 +2,26 @@ import SwiftUI
 
 struct SearchHereButton: View {
     var action: () -> Void
+    var isLoading: Bool = false
     
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 16, weight: .semibold))
-                
-                Text("Search this area")
-                    .font(.system(size: 16, weight: .semibold))
+                if isLoading {
+                    // Show compact loading indicator when loading
+                    UnifiedLoadingIndicator(
+                        message: "Searching...",
+                        color: .white,
+                        style: .compact,
+                        backgroundColor: Color.accentColor
+                    )
+                } else {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 16, weight: .semibold))
+                    
+                    Text("Search this area")
+                        .font(.system(size: 16, weight: .semibold))
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -26,11 +37,11 @@ struct SearchHereButton: View {
             )
             .foregroundColor(.white)
         }
+        .disabled(isLoading)
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .onAppear {
             // Provide haptic feedback when button appears
-            let generator = UIImpactFeedbackGenerator(style: .medium)
-            generator.impactOccurred()
+            HapticsManager.shared.mediumImpact()
         }
     }
 }
@@ -38,8 +49,14 @@ struct SearchHereButton: View {
 // MARK: Preview
 struct SearchHereButtonPreview: PreviewProvider {
     static var previews: some View {
-        SearchHereButton(action: {})
-            .padding()
-            .previewLayout(.sizeThatFits)
+        VStack(spacing: 20) {
+            SearchHereButton(action: {})
+                .previewDisplayName("Normal")
+            
+            SearchHereButton(action: {}, isLoading: true)
+                .previewDisplayName("Loading")
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
     }
 }

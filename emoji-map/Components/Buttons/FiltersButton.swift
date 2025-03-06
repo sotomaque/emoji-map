@@ -10,15 +10,15 @@ struct FiltersButton: View {
             Circle()
                 .fill(
                     activeFilterCount > 0 ? Color.blue : Color.black
-                        .opacity(0.1)
+                        .opacity(0.8)
                 )
                 .frame(width: 44, height: 44)
-                .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
             
             // Icon
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(activeFilterCount > 0 ? .white : .primary)
+                .foregroundColor(.white)
                 .opacity(isLoading ? 0.5 : 1.0)
             
             // Badge for active filter count
@@ -37,7 +37,12 @@ struct FiltersButton: View {
         }
         .overlay(
             Circle()
-                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                .stroke(
+                    activeFilterCount > 0 ? 
+                        Color.blue.opacity(0.3) : 
+                        Color.black.opacity(0.3),
+                    lineWidth: activeFilterCount > 0 ? 1 : 1.5
+                )
         )
         .scaleEffect(activeFilterCount > 0 ? 1.1 : 1.0)
         .animation(

@@ -3,7 +3,6 @@ import SwiftUI
 // MARK: SkeletonPhotoView
 struct SkeletonPhotoView: View {
     var height: CGFloat = 200
-    var cornerRadius: CGFloat = 16
     
     var body: some View {
         Rectangle()
@@ -11,9 +10,9 @@ struct SkeletonPhotoView: View {
                 LinearGradient(
                     gradient: Gradient(
                         colors: [
+                            Color.gray.opacity(0.1),
                             Color.gray.opacity(0.2),
-                            Color.gray.opacity(0.3),
-                            Color.gray.opacity(0.2)
+                            Color.gray.opacity(0.1)
                         ]
                     ),
                     startPoint: .leading,
@@ -21,24 +20,7 @@ struct SkeletonPhotoView: View {
                 )
             )
             .frame(maxWidth: .infinity, maxHeight: height)
-            .clipShape(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: cornerRadius, 
-                    bottomLeadingRadius: 0, 
-                    bottomTrailingRadius: 0, 
-                    topTrailingRadius: cornerRadius
-                )
-            )
-            .overlay(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: cornerRadius, 
-                    bottomLeadingRadius: 0, 
-                    bottomTrailingRadius: 0, 
-                    topTrailingRadius: cornerRadius
-                )
-                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-            )
-            .shimmering()
+            .shimmering(opacity: 0.3)
     }
 }
 
@@ -48,7 +30,7 @@ struct SkeletonReviewCard: View {
         VStack(alignment: .leading, spacing: 8) {
             // Reviewer name
             Rectangle()
-                .fill(Color.gray.opacity(0.2))
+                .fill(Color.gray.opacity(0.1))
                 .frame(width: 120, height: 16)
                 .cornerRadius(4)
             
@@ -56,7 +38,7 @@ struct SkeletonReviewCard: View {
             HStack(spacing: 4) {
                 ForEach(0..<5, id: \.self) { _ in
                     Rectangle()
-                        .fill(Color.gray.opacity(0.2))
+                        .fill(Color.gray.opacity(0.1))
                         .frame(width: 16, height: 16)
                         .cornerRadius(8)
                 }
@@ -65,17 +47,17 @@ struct SkeletonReviewCard: View {
             // Review text
             VStack(alignment: .leading, spacing: 6) {
                 Rectangle()
-                    .fill(Color.gray.opacity(0.2))
+                    .fill(Color.gray.opacity(0.1))
                     .frame(height: 12)
                     .cornerRadius(2)
                 
                 Rectangle()
-                    .fill(Color.gray.opacity(0.2))
+                    .fill(Color.gray.opacity(0.1))
                     .frame(height: 12)
                     .cornerRadius(2)
                 
                 Rectangle()
-                    .fill(Color.gray.opacity(0.2))
+                    .fill(Color.gray.opacity(0.1))
                     .frame(width: 200, height: 12)
                     .cornerRadius(2)
             }
@@ -84,14 +66,15 @@ struct SkeletonReviewCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.systemBackground))
         .cornerRadius(12)
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
-        .shimmering()
+        .shadow(color: .black.opacity(0.03), radius: 4, x: 0, y: 2)
+        .shimmering(opacity: 0.3)
     }
 }
 
 // MARK: SkeletonShimmerModifier
 struct SkeletonShimmerModifier: ViewModifier {
     @State private var phase: CGFloat = 0
+    var opacity: CGFloat = 0.5
     
     func body(content: Content) -> some View {
         content
@@ -99,18 +82,18 @@ struct SkeletonShimmerModifier: ViewModifier {
                 GeometryReader { geometry in
                     LinearGradient(
                         gradient: Gradient(
-stops: [
-                            .init(color: Color.clear, location: 0),
-                            .init(
-                                color: Color.white.opacity(0.5),
-                                location: 0.3
-                            ),
-                            .init(
-                                color: Color.white.opacity(0.5),
-                                location: 0.7
-                            ),
-                            .init(color: Color.clear, location: 1),
-]
+                            stops: [
+                                .init(color: Color.clear, location: 0),
+                                .init(
+                                    color: Color.white.opacity(opacity),
+                                    location: 0.3
+                                ),
+                                .init(
+                                    color: Color.white.opacity(opacity),
+                                    location: 0.7
+                                ),
+                                .init(color: Color.clear, location: 1),
+                            ]
                         ),
                         startPoint: .leading,
                         endPoint: .trailing
@@ -126,7 +109,7 @@ stops: [
             .onAppear {
                 withAnimation(
                     Animation
-                        .linear(duration: 1.5)
+                        .linear(duration: 2.0)
                         .repeatForever(autoreverses: false)
                 ) {
                     phase = 1
@@ -136,8 +119,8 @@ stops: [
 }
 
 extension View {
-    func shimmering() -> some View {
-        modifier(SkeletonShimmerModifier())
+    func shimmering(opacity: CGFloat = 0.5) -> some View {
+        modifier(SkeletonShimmerModifier(opacity: opacity))
     }
 }
 

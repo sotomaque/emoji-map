@@ -61,10 +61,17 @@ class MapViewModel: ObservableObject {
     @Published var useLocalRatings: Bool = false // Whether to use local ratings instead of Google ratings
     @Published var showFilters: Bool = false // Controls filter sheet visibility
     
-    private let locationManager = LocationManager()
     private let googlePlacesService: GooglePlacesServiceProtocol
     private let userPreferences: UserPreferences
     private var shouldCenterOnLocation = true
+    
+    // Make locationManager accessible to other views
+    let locationManager: LocationManager
+    
+    // Public getter for userPreferences
+    var preferences: UserPreferences {
+        return userPreferences
+    }
     
     // Computed property to check if all categories are selected
     var areAllCategoriesSelected: Bool {
@@ -166,6 +173,7 @@ class MapViewModel: ObservableObject {
     ) {
         self.googlePlacesService = googlePlacesService
         self.userPreferences = userPreferences
+        self.locationManager = LocationManager()
         
         // Set default coordinate (San Francisco)
         let defaultCoordinate = CLLocationCoordinate2D(
@@ -282,8 +290,7 @@ class MapViewModel: ObservableObject {
     
     func toggleCategory(_ category: String) {
         // Provide haptic feedback
-        let feedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
-        feedbackGenerator.prepare()
+        HapticsManager.shared.prepareGenerators()
         
         // If "All" is currently selected and we're selecting a specific category
         if isAllCategoriesMode {
@@ -294,13 +301,13 @@ class MapViewModel: ObservableObject {
             // Add only the selected category
             selectedCategories.insert(category)
             // Stronger feedback for selection
-            feedbackGenerator.impactOccurred(intensity: 0.8)
+            HapticsManager.shared.mediumImpact(intensity: 0.8)
         } else {
             // Normal toggle behavior when "All" is not selected
             if selectedCategories.contains(category) {
                 selectedCategories.remove(category)
                 // Lighter feedback for deselection
-                feedbackGenerator.impactOccurred(intensity: 0.6)
+                HapticsManager.shared.lightImpact(intensity: 0.6)
                 
                 // If we removed a category and now no categories are selected, set isAllCategoriesMode to false
                 if selectedCategories.isEmpty {
@@ -309,7 +316,7 @@ class MapViewModel: ObservableObject {
             } else {
                 selectedCategories.insert(category)
                 // Stronger feedback for selection
-                feedbackGenerator.impactOccurred(intensity: 0.8)
+                HapticsManager.shared.mediumImpact(intensity: 0.8)
                 
                 // If we added a category and now all categories are selected, set isAllCategoriesMode to true
                 if areAllCategoriesSelected {
@@ -341,18 +348,17 @@ class MapViewModel: ObservableObject {
     
     func toggleFavoritesFilter() {
         // Provide haptic feedback
-        let feedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
-        feedbackGenerator.prepare()
+        HapticsManager.shared.prepareGenerators()
         
         showFavoritesOnly.toggle()
         
         // Provide appropriate feedback based on state
         if showFavoritesOnly {
             // Stronger feedback when enabling favorites
-            feedbackGenerator.impactOccurred(intensity: 0.9)
+            HapticsManager.shared.mediumImpact(intensity: 0.9)
         } else {
             // Lighter feedback when disabling
-            feedbackGenerator.impactOccurred(intensity: 0.7)
+            HapticsManager.shared.lightImpact(intensity: 0.7)
         }
         
         // Show notification with haptic feedback
@@ -419,6 +425,13 @@ class MapViewModel: ObservableObject {
         
         // Trigger UI update
         objectWillChange.send()
+        
+        // Provide haptic feedback
+        if wasAlreadyFavorite {
+            HapticsManager.shared.mediumImpact(intensity: 0.7)
+        } else {
+            HapticsManager.shared.successSequence()
+        }
         
         // Show notification to confirm action
         let actionType = wasAlreadyFavorite ? "removed from" : "added to"
@@ -524,9 +537,7 @@ class MapViewModel: ObservableObject {
     func recenterMap() {
         if let userLocation = locationManager.location {
             // Provide haptic feedback
-            let feedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
-            feedbackGenerator.prepare()
-            feedbackGenerator.impactOccurred()
+            HapticsManager.shared.mediumImpact()
             
             print("Recentering map to user location: \(userLocation.coordinate)")
             
@@ -561,9 +572,7 @@ class MapViewModel: ObservableObject {
             objectWillChange.send()
         } else {
             // Provide error feedback if location is not available
-            let feedbackGenerator = UINotificationFeedbackGenerator()
-            feedbackGenerator.prepare()
-            feedbackGenerator.notificationOccurred(.error)
+            HapticsManager.shared.errorSequence()
             
             // Show notification
             showNotificationMessage("Unable to find your location")
@@ -580,7 +589,15 @@ class MapViewModel: ObservableObject {
     
     @MainActor
     func fetchAndUpdatePlaces() async throws {
-        isLoading = true
+        // Use a task to delay showing the loading indicator
+        let loadingTask = Task { @MainActor in
+            // Wait a short delay before showing loading indicator
+            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+            if !Task.isCancelled {
+                isLoading = true
+            }
+        }
+        
         error = nil
         showError = false
         
@@ -595,14 +612,17 @@ class MapViewModel: ObservableObject {
                 center: region.center,
                 categories: activeCategories
             )
+            
+            // Cancel the loading indicator task if it hasn't shown yet
+            loadingTask.cancel()
+            isLoading = false
+            
             self.places = fetchedPlaces
             
             // If we got zero places, provide feedback
             if fetchedPlaces.isEmpty {
                 // Provide haptic feedback for no results
-                let feedbackGenerator = UINotificationFeedbackGenerator()
-                feedbackGenerator.prepare()
-                feedbackGenerator.notificationOccurred(.warning)
+                HapticsManager.shared.notification(type: .warning)
                 
                 // Show notification
                 showNotificationMessage("No places found in this area")
@@ -613,9 +633,7 @@ class MapViewModel: ObservableObject {
             // Handle specific error types
             if case .noResults(let placeType) = networkError {
                 // Provide haptic feedback for no results
-                let feedbackGenerator = UINotificationFeedbackGenerator()
-                feedbackGenerator.prepare()
-                feedbackGenerator.notificationOccurred(.warning)
+                HapticsManager.shared.notification(type: .warning)
                 
                 // Show notification
                 showNotificationMessage("No \(categoryName(for: placeType)) places found in this area")
@@ -625,6 +643,11 @@ class MapViewModel: ObservableObject {
             } else {
                 // Only show error alert if it's not a cancelled request
                 self.showError = networkError.shouldShowAlert
+                
+                // Provide error feedback for non-cancelled requests
+                if networkError.shouldShowAlert {
+                    HapticsManager.shared.errorSequence()
+                }
             }
             
             print("Network error: \(networkError.localizedDescription)")
@@ -633,8 +656,6 @@ class MapViewModel: ObservableObject {
             self.showError = true
             print("Unknown error: \(error.localizedDescription)")
         }
-        
-        isLoading = false
     }
     
     private func fetchPlaces(center: CLLocationCoordinate2D, categories: [(emoji: String, name: String, type: String)]) async throws -> [Place] {
@@ -695,8 +716,7 @@ class MapViewModel: ObservableObject {
     
     func toggleAllCategories() {
         // Provide haptic feedback
-        let feedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
-        feedbackGenerator.prepare()
+        HapticsManager.shared.prepareGenerators()
         
         // Toggle the All Categories mode
         isAllCategoriesMode.toggle()
@@ -704,7 +724,7 @@ class MapViewModel: ObservableObject {
         if isAllCategoriesMode {
             // If switching to "All" mode, select all categories
             selectedCategories = Set(categories.map { $0.1 })
-            feedbackGenerator.impactOccurred(intensity: 0.8)
+            HapticsManager.shared.mediumImpact(intensity: 0.8)
             
             // Show appropriate notification based on favorites filter
             if showFavoritesOnly {
@@ -715,7 +735,7 @@ class MapViewModel: ObservableObject {
         } else {
             // If switching out of "All" mode, clear all categories
             selectedCategories.removeAll()
-            feedbackGenerator.impactOccurred(intensity: 0.6)
+            HapticsManager.shared.lightImpact(intensity: 0.6)
             
             // Show appropriate notification based on favorites filter
             if showFavoritesOnly {
@@ -740,9 +760,7 @@ class MapViewModel: ObservableObject {
         // Check if there are any places to recommend
         if availablePlaces.isEmpty {
             // Provide error haptic feedback
-            let feedbackGenerator = UINotificationFeedbackGenerator()
-            feedbackGenerator.prepare()
-            feedbackGenerator.notificationOccurred(.error)
+            HapticsManager.shared.errorSequence()
             
             // Create a descriptive message based on active filters
             var message = "No places to recommend"
@@ -782,9 +800,7 @@ class MapViewModel: ObservableObject {
         // Select a random place from the filtered list
         if let randomPlace = availablePlaces.randomElement() {
             // Provide haptic feedback
-            let feedbackGenerator = UIImpactFeedbackGenerator(style: .heavy)
-            feedbackGenerator.prepare()
-            feedbackGenerator.impactOccurred(intensity: 1.0)
+            HapticsManager.shared.heavyImpact(intensity: 1.0)
             
             // Update the selected place to show its details
             selectedPlace = randomPlace
@@ -824,6 +840,6 @@ class MapViewModel: ObservableObject {
     
     // Cancel all pending requests when the view model is deallocated
     deinit {
-        (googlePlacesService as? GooglePlacesService)?.cancelAllRequests()    
+        (googlePlacesService as? GooglePlacesService)?.cancelPlacesRequests()    
     }
 }

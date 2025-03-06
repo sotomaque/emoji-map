@@ -10,13 +10,13 @@ struct EmojiButton: View {
         ZStack {
             Text(emoji)
                 .font(.system(size: 24))
-                .opacity(isLoading ? 0.6 : 1.0)
+                .opacity(isLoading ? 0.8 : 1.0)
             
             if isLoading && isSelected {
                 // Show subtle loading indicator on selected buttons
                 ProgressView()
-                    .scaleEffect(0.6)
-                    .tint(Color.blue)
+                    .scaleEffect(0.5)
+                    .tint(Color.blue.opacity(0.7))
             }
         }
         .frame(width: 42, height: 42)
@@ -43,7 +43,9 @@ struct EmojiButton: View {
                     lineWidth: isSelected ? 2 : 1.5
                 )
         )
-        .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
+        // Remove scale effect during loading to prevent layout shifts
+        .scaleEffect(isSelected && !isLoading ? 1.05 : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: isSelected)
         .animation(.easeInOut(duration: 0.2), value: isLoading)
     }
 }
@@ -55,9 +57,9 @@ struct FavoritesButton: View {
     
     var body: some View {
         ZStack {
-            Image(systemName: isSelected ? "star.fill" : "star")
+            Image(systemName: "star.fill")
                 .font(.system(size: 18))
-                .foregroundColor(isSelected ? .white : .primary)
+                .foregroundColor(.white)
                 .opacity(isLoading ? 0.6 : 1.0)
             
             if isLoading && isSelected {
@@ -71,7 +73,7 @@ struct FavoritesButton: View {
         .background(
             Circle()
                 .fill(
-                    isSelected ? Color.yellow : Color.black.opacity(0.1)
+                    isSelected ? Color.yellow : Color.black
                 )
                 .shadow(color: .black.opacity(isSelected ? 0.1 : 0.05),
                         radius: isSelected ? 4 : 2,
@@ -82,10 +84,8 @@ struct FavoritesButton: View {
             Circle()
                 .stroke(
                     isSelected ? Color.yellow
-                        .opacity(isLoading ? 0.5 : 1.0) : Color.gray
-                        .opacity(
-                            0.3
-                        ),
+                        .opacity(isLoading ? 0.5 : 1.0) : Color.black
+                    ,
                     lineWidth: isSelected ? 2 : 1.5
                 )
         )
@@ -144,6 +144,7 @@ struct AllCategoriesButton: View {
 struct EmojiButtonPreview: PreviewProvider {
     static var previews: some View {
         HStack(spacing: 12) {
+            FavoritesButton(isSelected: false)
             FavoritesButton(isSelected: true)
             AllCategoriesButton(isSelected: false)
             EmojiButton(emoji: "🍕", isSelected: true)

@@ -364,9 +364,6 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
     }
     
     func fetchPlaceDetails(placeId: String, completion: @escaping (Result<PlaceDetails, NetworkError>) -> Void) {
-        // Cancel any existing place details request
-        cancelPlaceDetailsRequests()
-        
         // If using mock key, use mock data instead of making real API calls
         if useMockData {
             mockService.fetchPlaceDetails(placeId: placeId, completion: completion)

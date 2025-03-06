@@ -7,6 +7,7 @@
 
 import Foundation
 import UIKit
+import MapKit
 
 // Thread-safe actor for managing shared state
 @MainActor
@@ -18,10 +19,16 @@ class PlaceDetailViewModel: ObservableObject {
     @Published var showError = false
     @Published var isFavorite = false
     @Published var userRating: Int = 0
+    @Published var distanceFromUser: Double? = nil
     
     // Computed property to convert tuple reviews to Review objects
     var reviewObjects: [Review] {
         return reviews.map { Review(authorName: $0.0, text: $0.1, rating: $0.2) }
+    }
+    
+    // Computed property to format the distance in a user-friendly way
+    var formattedDistance: String {
+        return userPreferences.formatDistance(distanceFromUser)
     }
     
     private let userPreferences: UserPreferences
@@ -40,13 +47,37 @@ class PlaceDetailViewModel: ObservableObject {
     // Method to update the service after initialization - no longer needed but kept for compatibility
     func updateService(_ newService: GooglePlacesServiceProtocol) {
         // Cancel any pending requests on the old service
-        self.service.cancelAllRequests()
+        self.service.cancelPlaceDetailsRequests()
         // Update to the new service
         self.service = newService
     }
     
+    // Calculate the distance from the user to the place
+    func calculateDistanceFromUser(place: Place, userLocation: CLLocation?) {
+        guard let userLocation = userLocation else {
+            distanceFromUser = nil
+            return
+        }
+        
+        let placeLocation = CLLocation(
+            latitude: place.coordinate.latitude,
+            longitude: place.coordinate.longitude
+        )
+        
+        // Calculate the distance in meters
+        distanceFromUser = userLocation.distance(from: placeLocation)
+    }
+    
     func fetchDetails(for place: Place) {
-        isLoading = true
+        // Use a task to delay showing the loading indicator
+        let loadingTask = Task { @MainActor in
+            // Wait a short delay before showing loading indicator
+            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+            if !Task.isCancelled {
+                isLoading = true
+            }
+        }
+        
         error = nil
         showError = false
         currentPlaceId = place.placeId
@@ -57,14 +88,18 @@ class PlaceDetailViewModel: ObservableObject {
         // Get user rating if available
         userRating = userPreferences.getRating(for: place.placeId) ?? 0
         
-        // Cancel any previous requests before starting a new one
-        service.cancelPlaceDetailsRequests()
+        // Only cancel previous requests if the place ID has changed
+        if currentPlaceId != place.placeId {
+            service.cancelPlaceDetailsRequests()
+        }
         
         service.fetchPlaceDetails(placeId: place.placeId) { [weak self] result in
             // Ensure UI updates happen on the main thread
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 
+                // Cancel the loading indicator task if it hasn't shown yet
+                loadingTask.cancel()
                 self.isLoading = false
                 
                 switch result {
@@ -140,8 +175,21 @@ class PlaceDetailViewModel: ObservableObject {
         fetchDetails(for: place)
     }
     
+    // Method to call when the view disappears
+    func onViewDisappear() {
+        // Don't cancel requests when the view disappears
+        // This allows the requests to complete even if the view is dismissed
+        // The data will be available if the view is shown again
+    }
+    
+    // Method to update the distance when the user's location changes
+    func updateDistanceFromUser(place: Place, userLocation: CLLocation?) {
+        calculateDistanceFromUser(place: place, userLocation: userLocation)
+    }
+    
     // Cancel all pending requests when the view model is deallocated
     deinit {
-        service.cancelAllRequests()
+        // Only cancel place details requests, not all requests
+        service.cancelPlaceDetailsRequests()
     }
 }

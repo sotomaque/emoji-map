@@ -7,28 +7,29 @@
 
 import SwiftUI
 
-// Service container to hold shared service instances
-class ServiceContainer {
-    static let shared = ServiceContainer()
-    
-    let userPreferences = UserPreferences()
-    let googlePlacesService = GooglePlacesService()
-    
-    private init() {} // Singleton
-}
 
 @main
 struct emoji_mapApp: App {
     // Use the shared service container
     private let serviceContainer = ServiceContainer.shared
     
+    // Create a state object to track onboarding status
+    @StateObject private var userPreferences = ServiceContainer.shared.userPreferences
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(MapViewModel(
-                    googlePlacesService: serviceContainer.googlePlacesService,
-                    userPreferences: serviceContainer.userPreferences
-                ))
+            ZStack {
+                if userPreferences.hasCompletedOnboarding {
+                    ContentView()
+                        .environmentObject(MapViewModel(
+                            googlePlacesService: serviceContainer.googlePlacesService,
+                            userPreferences: serviceContainer.userPreferences
+                        ))
+                } else {
+                    OnboardingView(userPreferences: userPreferences, isFromSettings: false)
+                }
+            }
+            .animation(.easeInOut, value: userPreferences.hasCompletedOnboarding)
         }
     }
 }
