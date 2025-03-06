@@ -108,6 +108,7 @@
 			buildPhases = (
 				CD12CBD62D7522BB00EFAD77 /* Sources */,
 				CD12CBD72D7522BB00EFAD77 /* Frameworks */,
+				CD9A18262D7A1E800023EDF2 /* ShellScript */,
 				CD12CBD82D7522BB00EFAD77 /* Resources */,
 			);
 			buildRules = (
@@ -238,6 +239,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		CD9A18262D7A1E800023EDF2 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n#!/bin/bash\n\n# Script to include .env file in the app bundle\n# Add this as a Run Script Build Phase in Xcode, before \"Copy Bundle Resources\"\n\n# Set paths\nENV_FILE=\"$SRCROOT/.env\"\nTARGET_DIR=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app\"\n\n# Check if .env file exists\nif [ -f \"$ENV_FILE\" ]; then\n  echo \"Including .env file in app bundle\"\n  \n  # Copy the .env file to the app bundle\n  cp \"$ENV_FILE\" \"$TARGET_DIR/.env\"\n  \n  echo \"Successfully included .env file in app bundle\"\nelse\n  echo \"Warning: .env file not found at $ENV_FILE\"\n  echo \"Creating empty .env file in app bundle for debugging\"\n  \n  # Create an empty .env file in the app bundle for debugging\n  touch \"$TARGET_DIR/.env\"\nfi \n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		CD12CBD62D7522BB00EFAD77 /* Sources */ = {

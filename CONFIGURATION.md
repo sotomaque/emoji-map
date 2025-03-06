@@ -1,34 +1,24 @@
 # Configuration Guide for Emoji Map
 
-This document explains how to configure the Emoji Map application, particularly focusing on API keys and configuration files.
+This document explains how to configure the Emoji Map application, particularly focusing on API keys and environment variables.
 
 ## Configuration Files
 
-Emoji Map uses several configuration files to manage settings and API keys:
+Emoji Map uses the following configuration files:
 
-### 1. CustomInfo.plist
+### 1. Info.plist
+
+This is the main information property list file for the application. During the build process, the API key is automatically injected into this file from environment variables.
+
+### 2. CustomInfo.plist
 
 This is the main information property list file for the application. It contains:
 
 - Standard iOS app configuration (bundle ID, version, etc.)
 - Permission descriptions
 - UI configuration
-- **API Keys**: The `GooglePlacesAPIKey` is stored here as the primary source
 
 Location: `emoji-map/CustomInfo.plist`
-
-### 2. Config.plist
-
-This is a secondary configuration file specifically for API keys and other sensitive information:
-
-- Contains the `GooglePlacesAPIKey` as a backup source
-- Used during development and as a fallback
-
-Location: `emoji-map/Config.plist`
-
-### 3. Info.plist (Legacy Support)
-
-Some third-party SDKs (like Google Maps/Places) may look for API keys directly in a file named `Info.plist`. The app includes fallback logic to check this file if needed.
 
 ## API Key Configuration
 
@@ -36,23 +26,39 @@ Some third-party SDKs (like Google Maps/Places) may look for API keys directly i
 
 The app requires a Google Places API key to fetch restaurant data. The key is retrieved in the following order:
 
-1. From `CustomInfo.plist` (primary source)
-2. From `Config.plist` (secondary source)
-3. From standard `Info.plist` (fallback for compatibility)
-4. From the device keychain (for production)
+1. From Xcode environment variables (primary source)
+2. From the device keychain (for production)
 
 If no key is found, the app falls back to mock data mode.
 
-### Setting Up Your API Key
+## Setting Up Environment Variables
 
-1. Obtain a Google Places API key from the [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable the Places API for your project
-3. Add the key to your `CustomInfo.plist` file:
+### For Local Development (Simulator and Device)
 
-```xml
-<key>GooglePlacesAPIKey</key>
-<string>YOUR_API_KEY_HERE</string>
-```
+1. In Xcode, select your project in the Project Navigator
+2. Select your app target
+3. Go to the "Edit Scheme" option (Product > Scheme > Edit Scheme)
+4. Select the "Run" action
+5. Go to the "Arguments" tab
+6. Under "Environment Variables", click the "+" button
+7. Add a variable with name "GOOGLE_PLACES_API_KEY" and your actual API key as the value
+8. Make sure the checkbox next to it is checked
+
+This will set the environment variable for your app when running in the simulator or on a device from Xcode.
+
+### For CI/CD and Production (Xcode Cloud)
+
+1. In App Store Connect, go to your app's Xcode Cloud workflow
+2. Add an environment variable named "GOOGLE_PLACES_API_KEY" with your API key
+3. Make sure it's marked as a secret for security
+
+## Obtaining a Google Places API Key
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the Places API for your project
+4. Create an API key
+5. Add the key to your Xcode environment variables as described above
 
 ## Mock Data Mode
 
@@ -66,9 +72,10 @@ If no valid API key is found, the app automatically switches to mock data mode:
 
 For production builds:
 
-1. The API key should be stored in the keychain rather than in plist files
-2. Use the `Configuration.storeAPIKey(_:named:)` method to securely store keys
+1. Never commit API keys to source control
+2. Use environment variables for key injection
 3. Consider implementing API key restrictions in the Google Cloud Console
+4. The API key is never stored in the app bundle, making it impossible for users to extract it
 
 ## Troubleshooting
 
@@ -76,25 +83,56 @@ For production builds:
 
 If the app shows "API key not configured properly":
 
-1. Verify the key exists in `CustomInfo.plist`
-2. Check that the key name is exactly `GooglePlacesAPIKey`
-3. Ensure the plist file is included in the "Copy Bundle Resources" build phase
+1. Verify the `GOOGLE_PLACES_API_KEY` environment variable is set in your Xcode scheme
+2. Check that the variable name is exactly "GOOGLE_PLACES_API_KEY"
+3. Make sure the checkbox next to the environment variable is checked
 4. Clean and rebuild the project
 
-### Google SDK Issues
+### Device Testing
 
-If the Google Places SDK cannot find the API key:
+When testing on a physical device:
 
-1. The SDK might be looking directly for `Info.plist` instead of `CustomInfo.plist`
-2. Ensure your key is correctly set in `CustomInfo.plist`
-3. The app's configuration system will handle finding the key in the correct location
+1. Make sure you're running the app directly from Xcode
+2. The environment variables set in your Xcode scheme will be passed to the app
+3. If you install the app through TestFlight or the App Store, the environment variables from Xcode Cloud will be used
 
-## Environment Variables
+## Example CI/CD Configuration
 
-For CI/CD pipelines, you can use environment variables:
+### Xcode Cloud
 
-```bash
-export GOOGLE_PLACES_API_KEY="your-api-key-here"
+1. In App Store Connect, go to your app's Xcode Cloud workflow
+2. Add an environment variable named `GOOGLE_PLACES_API_KEY` with your API key
+3. Make sure the variable is marked as "secret" for security
+
+### GitHub Actions
+
+```yaml
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up environment
+        env:
+          GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+        run: |
+          echo "GOOGLE_PLACES_API_KEY=$GOOGLE_PLACES_API_KEY" > .env
+      - name: Build and test
+        run: |
+          xcodebuild -scheme emoji-map -destination 'platform=iOS Simulator,name=iPhone 14'
 ```
 
-Then modify your build script to inject this into the plist files during build time.
+### Fastlane
+
+```ruby
+lane :beta do
+  # Set environment variables
+  ENV["GOOGLE_PLACES_API_KEY"] = ENV["GOOGLE_PLACES_API_KEY"] || prompt(text: "Enter Google Places API Key: ")
+
+  # Build the app
+  build_app(scheme: "emoji-map")
+
+  # Upload to TestFlight
+  upload_to_testflight
+end
+```
