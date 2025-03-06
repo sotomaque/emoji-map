@@ -52,5 +52,7 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>GooglePlacesAPIKey</key>
+	<string>AIzaSyCO3I93iowsiHycyGCHtRnoIG5xCE1hJTU</string>
 </dict>
 </plist>

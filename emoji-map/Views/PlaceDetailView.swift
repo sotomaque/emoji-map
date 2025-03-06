@@ -449,19 +449,12 @@ struct PlaceDetailView: View {
                 // Get installed map apps
                 ForEach(MapAppUtility.shared.getInstalledMapApps()) { app in
                     Button(app.rawValue) {
-                        print("DEBUG: Selected map app: \(app.rawValue)")
                         MapAppUtility.shared.openInMapApp(
                             mapApp: app,
                             coordinate: place.coordinate,
                             name: place.name
                         )
                     }
-                }
-                
-                // Add a test button for debugging
-                Button("Test URL Schemes") {
-                    print("DEBUG: Testing URL schemes...")
-                    MapAppUtility.shared.testURLSchemes()
                 }
                 
                 Button("Cancel", role: .cancel) {}

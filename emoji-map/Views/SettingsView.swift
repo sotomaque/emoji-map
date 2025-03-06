@@ -30,7 +30,10 @@ struct SettingsView: View {
                 
                 Section(header: Text("Display Preferences")) {
                     // Distance unit picker
-                    Picker("Distance Units", selection: $userPreferences.distanceUnit) {
+                    Picker(
+                        "Distance Units",
+                        selection: $userPreferences.distanceUnit
+                    ) {
                         ForEach(DistanceUnit.allCases) { unit in
                             Text(unit.rawValue).tag(unit)
                         }
@@ -40,8 +43,13 @@ struct SettingsView: View {
                     }
                     
                     // Default map app picker
-                    Picker("Default Map App", selection: $userPreferences.defaultMapApp) {
-                        ForEach(MapAppUtility.shared.getInstalledMapApps()) { app in
+                    Picker(
+                        "Default Map App",
+                        selection: $userPreferences.defaultMapApp
+                    ) {
+                        ForEach(
+                            MapAppUtility.shared.getInstalledMapApps()
+                        ) { app in
                             Text(app.rawValue).tag(app.rawValue)
                         }
                     }
@@ -51,85 +59,115 @@ struct SettingsView: View {
                 }
                 
                 Section(header: Text("Help & Support")) {
-                    Button(action: {
+                    Button(
+action: {
                         // Provide haptic feedback
-                        let generator = UIImpactFeedbackGenerator(style: .medium)
-                        generator.impactOccurred()
+    let generator = UIImpactFeedbackGenerator(
+        style: .medium
+    )
+    generator.impactOccurred()
                         
-                        // Show onboarding
-                        showOnboarding = true
-                    }) {
-                        HStack {
-                            Image(systemName: "questionmark.circle")
-                                .foregroundColor(.blue)
-                            Text("View Tutorial")
-                        }
-                    }
+    // Show onboarding
+    showOnboarding = true
+}) {
+    HStack {
+        Image(systemName: "questionmark.circle")
+            .foregroundColor(.blue)
+        Text("View Tutorial")
+    }
+}
                     
-                    Link(destination: URL(string: "mailto:support@example.com")!) {
-                        HStack {
-                            Image(systemName: "envelope")
-                                .foregroundColor(.blue)
-                            Text("Contact Support")
+                    // Support section
+                    Section(header: Text("Support")) {
+                        if let supportURL = URL(
+                            string: "mailto:support@emoji-map.com"
+                        ) {
+                            Link(destination: supportURL) {
+                                Label(
+                                    "Contact Support",
+                                    systemImage: "envelope"
+                                )
+                            }
+                        } else {
+                            Text("Contact Support: support@emoji-map.com")
+                                .foregroundColor(.secondary)
                         }
+                        
+                       
+                        Label("About EmojiMap", systemImage: "info.circle")
+                       
                     }
                 }
                 
                 Section(header: Text("About")) {
-                    Text("Emoji Map helps you discover restaurants and bars around you with a fun, emoji-based interface. Filter by food type, save your favorites, and explore your city in a new way!")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .padding(.vertical, 8)
+                    Text(
+                        "Emoji Map helps you discover restaurants and bars around you with a fun, emoji-based interface. Filter by food type, save your favorites, and explore your city in a new way!"
+                    )
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 8)
                 }
                 
                 Section(header: Text("Data Management")) {
-                    Button(action: {
+                    Button(
+action: {
                         // Provide haptic feedback
-                        let generator = UIImpactFeedbackGenerator(style: .medium)
-                        generator.impactOccurred()
+    let generator = UIImpactFeedbackGenerator(
+        style: .medium
+    )
+    generator.impactOccurred()
                         
-                        // Show reset confirmation
-                        showResetConfirmation = true
-                    }) {
-                        HStack {
-                            Image(systemName: "arrow.counterclockwise")
-                                .foregroundColor(.red)
-                            Text("Reset All Data")
-                                .foregroundColor(.red)
-                        }
-                    }
-                    .alert(isPresented: $showResetConfirmation) {
-                        Alert(
-                            title: Text("Reset All Data?"),
-                            message: Text("This will delete all your favorites, ratings, and preferences. This action cannot be undone."),
-                            primaryButton: .destructive(Text("Reset")) {
-                                // Provide strong haptic feedback
-                                let generator = UINotificationFeedbackGenerator()
-                                generator.notificationOccurred(.success)
+    // Show reset confirmation
+    showResetConfirmation = true
+}) {
+    HStack {
+        Image(systemName: "arrow.counterclockwise")
+            .foregroundColor(.red)
+        Text("Reset All Data")
+            .foregroundColor(.red)
+    }
+}
+.alert(isPresented: $showResetConfirmation) {
+    Alert(
+        title: Text("Reset All Data?"),
+        message: Text(
+            "This will delete all your favorites, ratings, and preferences. This action cannot be undone."
+        ),
+        primaryButton: .destructive(Text("Reset")) {
+            // Provide strong haptic feedback
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
                                 
-                                // Reset user data
-                                userPreferences.resetAllData()
-                            },
-                            secondaryButton: .cancel()
-                        )
-                    }
+            // Reset user data
+            userPreferences.resetAllData()
+        },
+        secondaryButton: .cancel()
+    )
+}
                 }
                 
+                // Legal section
                 Section(header: Text("Legal")) {
-                    Link(destination: URL(string: "https://example.com/privacy")!) {
-                        HStack {
-                            Image(systemName: "lock.shield")
-                                .foregroundColor(.blue)
-                            Text("Privacy Policy")
+                    if let privacyURL = URL(
+                        string: "https://emoji-map.com/privacy"
+                    ) {
+                        Link(destination: privacyURL) {
+                            Label("Privacy Policy", systemImage: "lock.shield")
                         }
+                    } else {
+                        Text("Privacy Policy")
+                            .foregroundColor(.secondary)
                     }
                     
-                    Link(destination: URL(string: "https://example.com/terms")!) {
-                        HStack {
-                            Image(systemName: "doc.text")
-                                .foregroundColor(.blue)
-                            Text("Terms of Service")
+                    if let termsURL = URL(
+                        string: "https://emoji-map.com/terms"
+                    ) {
+                        Link(destination: termsURL) {
+                            Label("Terms of Service", systemImage: "doc.text")
                         }
+                    } else {
+                        Text("Terms of Service")
+                            .foregroundColor(.secondary)
                     }
                 }
             }
@@ -139,7 +177,10 @@ struct SettingsView: View {
                 dismiss()
             })
             .fullScreenCover(isPresented: $showOnboarding) {
-                OnboardingView(userPreferences: userPreferences, isFromSettings: true)
+                OnboardingView(
+                    userPreferences: userPreferences,
+                    isFromSettings: true
+                )
             }
         }
     }

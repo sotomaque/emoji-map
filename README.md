@@ -42,6 +42,11 @@ A beautiful iOS app that helps you discover and remember your favorite restauran
 - Mock data support for development and testing
 - Thread-safe implementation for reliable performance
 
+## Documentation
+
+- [Configuration Guide](CONFIGURATION.md) - API keys and app configuration
+- [UI Components Guide](UI_COMPONENTS.md) - UI components and z-index management
+
 ## Architecture
 
 The app follows the MVVM (Model-View-ViewModel) architecture pattern:
@@ -95,7 +100,32 @@ cd emoji-map
 open emoji-map.xcodeproj
 ```
 
-3. Build and run the application
+3. Configure API Keys
+
+Before running the app, you need to set up your Google Places API key. See the [Configuration Guide](CONFIGURATION.md) for detailed instructions.
+
+4. Build and run the application
+
+## Configuration
+
+The app uses a flexible configuration system to manage API keys and settings:
+
+- **CustomInfo.plist**: Main configuration file containing the Google Places API key
+- **Config.plist**: Secondary configuration file for development
+- **Keychain Storage**: Secure storage for production use
+
+For detailed configuration instructions, see the [Configuration Guide](CONFIGURATION.md).
+
+## UI Components
+
+The app uses a variety of custom UI components:
+
+- **NotificationBanner**: Displays temporary messages at the bottom of the screen
+- **WarningBanner**: Shows important alerts at the top of the screen
+- **EmojiSelector**: Horizontal scrolling category filter
+- **StarRatingView**: Interactive rating component
+
+For details on UI components and z-index management, see the [UI Components Guide](UI_COMPONENTS.md).
 
 ## Testing
 
@@ -129,6 +159,8 @@ The app supports a mock mode for development and testing:
 2. Run the app to use pre-defined mock data instead of real API calls
 3. A warning banner will indicate when mock mode is active
 
+Alternatively, the app will automatically switch to mock mode if no valid API key is found.
+
 ## Thread Safety
 
 The app implements proper thread synchronization:
@@ -138,6 +170,15 @@ The app implements proper thread synchronization:
 - Ensures all UI updates happen on the main thread
 - Properly handles task cancellation
 
+## Troubleshooting
+
+If you encounter issues with the app:
+
+1. Check the [Configuration Guide](CONFIGURATION.md) for API key setup
+2. Ensure all required plist files are included in the build
+3. Clean the build folder and rebuild the project
+4. Check the console for detailed error messages
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
@@ -146,4 +187,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [SwiftUI](https://developer.apple.com/xcode/swiftui/) - UI framework
 - [MapKit](https://developer.apple.com/documentation/mapkit/) - Map services
+- [Google Places API](https://developers.google.com/maps/documentation/places/web-service/overview) - Restaurant data
 - [ViewInspector](https://github.com/nalexn/ViewInspector) - SwiftUI testing library

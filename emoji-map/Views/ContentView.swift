@@ -124,14 +124,13 @@ struct ContentView: View {
             } else {
                 // Normal content when location is available or permission is denied
                 VStack {
+                    // Emoji category selector with integrated favorites button - HIGHER Z-INDEX
                     VStack(spacing: 4) {
-                        // Remove the FiltersButton and category count indicator from here
-                        
-                        // Emoji category selector with integrated favorites button
                         EmojiSelector()
                             .disabled(viewModel.isLoading) // Disable interaction during loading
                             .opacity(viewModel.isLoading ? 0.7 : 1.0) // Subtle fade during loading
                     }
+                    .zIndex(50) // Higher z-index to ensure it's above the notification banner
                     
                     Spacer() // Push selector to the top
                     
@@ -147,6 +146,25 @@ struct ContentView: View {
                     }
                 }
                 
+                // Notification banner - LOWER Z-INDEX
+                // Positioned as a separate element in the main ZStack
+                if viewModel.showNotification {
+                    VStack {
+                        Spacer() // Push to bottom
+                        
+                        NotificationBanner(
+                            message: viewModel.notificationMessage,
+                            isVisible: true,
+                            onAppear: {
+                                // Trigger haptic feedback when notification appears
+                                triggerHapticFeedback()
+                            }
+                        )
+                        .padding(.bottom, 100) // Add padding to position above bottom buttons
+                    }
+                    .zIndex(10) // Lower z-index to ensure it's below the emoji selector
+                }
+                
                 // Recenter button
                 RecenterButton(
                     isLoading: viewModel.isLoading,
@@ -157,6 +175,7 @@ struct ContentView: View {
                     }
                 )
                 .position(x: UIScreen.main.bounds.width - 40, y: UIScreen.main.bounds.height - 120) // Bottom-right corner
+                .zIndex(20) // Higher than notification but lower than emoji selector
                 
                 // FiltersButton - moved to bottom left
                 Button(action: {
@@ -170,6 +189,7 @@ struct ContentView: View {
                 .buttonStyle(PlainButtonStyle())
                 .disabled(viewModel.isLoading)
                 .position(x: 40, y: UIScreen.main.bounds.height - 120) // Bottom-left corner
+                .zIndex(20) // Higher than notification but lower than emoji selector
                 // Add long press gesture for settings (easter egg)
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 1.0)
@@ -220,16 +240,6 @@ struct ContentView: View {
                 }
                 .zIndex(100) // Ensure it's above everything else
             }
-            
-            // Notification banner
-            NotificationBanner(
-                message: viewModel.notificationMessage,
-                isVisible: viewModel.showNotification,
-                onAppear: {
-                    // Trigger haptic feedback when notification appears
-                    triggerHapticFeedback()
-                }
-            )
         }
         .onAppear {
             viewModel.onAppear()

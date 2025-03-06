@@ -212,11 +212,7 @@ class MapViewModel: ObservableObject {
     private func checkConfiguration() {
         if Configuration.isUsingMockKey {
             showConfigWarning = true
-            if let errorMessage = Configuration.configurationErrorMessage {
-                configWarningMessage = "Configuration Error: \(errorMessage) Using mock data."
-            } else {
-                configWarningMessage = "Using mock API key. Data shown is not from real API."
-            }
+            configWarningMessage = "Using mock API key. Data shown is not from real API."
         }
     }
     

@@ -8,6 +8,7 @@
 import Foundation
 import UIKit
 import MapKit
+import os
 
 // Thread-safe actor for managing shared state
 @MainActor
@@ -36,6 +37,12 @@ class PlaceDetailViewModel: ObservableObject {
     
     // Make service a private variable instead of a constant so we can update it
     private var service: GooglePlacesServiceProtocol
+    
+    // Logger for debugging
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "PlaceDetailViewModel")
+    
+    // Cache instance
+    private let cache = NetworkCache.shared
     
     init(service: GooglePlacesServiceProtocol? = nil, userPreferences: UserPreferences? = nil) {
         // Use the provided service or get the shared instance
@@ -88,6 +95,25 @@ class PlaceDetailViewModel: ObservableObject {
         // Get user rating if available
         userRating = userPreferences.getRating(for: place.placeId) ?? 0
         
+        logger.info("Fetching details for place: \(place.name) (ID: \(place.placeId))")
+        
+        // Check if we have cached details for this place
+        if let cachedDetails = cache.retrievePlaceDetails(forPlaceId: place.placeId) {
+            logger.info("Using cached details for place ID: \(place.placeId)")
+            
+            // Cancel the loading indicator task if it hasn't shown yet
+            loadingTask.cancel()
+            isLoading = false
+            
+            // Update UI with cached data
+            self.photos = cachedDetails.photos
+            self.reviews = cachedDetails.reviews
+            return
+        }
+        
+        // No cache hit, need to fetch from network
+        logger.info("Fetching details from network for place ID: \(place.placeId)")
+        
         // Only cancel previous requests if the place ID has changed
         if currentPlaceId != place.placeId {
             service.cancelPlaceDetailsRequests()
@@ -104,6 +130,7 @@ class PlaceDetailViewModel: ObservableObject {
                 
                 switch result {
                 case .success(let details):
+                    self.logger.info("Successfully fetched details for place ID: \(place.placeId)")
                     self.photos = details.photos
                     self.reviews = details.reviews
                 case .failure(let networkError):
@@ -119,7 +146,7 @@ class PlaceDetailViewModel: ObservableObject {
                     
                     // Only show error alert if it's not a cancelled request
                     self.showError = networkError.shouldShowAlert
-                    print("Error fetching place details: \(networkError.localizedDescription)")
+                    self.logger.error("Error fetching place details: \(networkError.localizedDescription)")
                 }
             }
         }
@@ -134,7 +161,7 @@ class PlaceDetailViewModel: ObservableObject {
         } else {
             // We can't add to favorites without the full place object
             // This method should not be called directly - use setFavorite instead
-            print("Warning: Cannot add to favorites without full place object. Use setFavorite instead.")
+            logger.warning("Cannot add to favorites without full place object. Use setFavorite instead.")
             // Don't change the isFavorite state since we couldn't actually add it
         }
         
@@ -143,7 +170,7 @@ class PlaceDetailViewModel: ObservableObject {
     }
     
     func setFavorite(_ place: Place, isFavorite: Bool) {
-        print("PlaceDetailViewModel.setFavorite called for \(place.name), setting to \(isFavorite)")
+        logger.info("Setting favorite status for \(place.name) to \(isFavorite)")
         
         if isFavorite {
             userPreferences.addFavorite(place)
@@ -153,10 +180,6 @@ class PlaceDetailViewModel: ObservableObject {
         
         // Update the local state
         self.isFavorite = isFavorite
-        
-        // Debug: Print favorites after change
-        print("After setting favorite in PlaceDetailViewModel:")
-        userPreferences.printFavorites()
         
         // Notify UI of change
         objectWillChange.send()

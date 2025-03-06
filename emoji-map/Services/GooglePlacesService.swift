@@ -8,6 +8,7 @@
 
 import Foundation
 import MapKit
+import os
 
 // MARK: - Network Error Types
 enum NetworkError: Error {
@@ -73,6 +74,12 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
     private let apiKey = Configuration.googlePlacesAPIKey
     private let useMockData = Configuration.isUsingMockKey
     private let mockService = MockGooglePlacesService()
+    
+    // Cache instance
+    private let cache = NetworkCache.shared
+    
+    // Logger for debugging
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "GooglePlacesService")
     
     // Serial queue for thread synchronization
     private let taskQueue = DispatchQueue(label: "com.emoji-map.taskQueue")
@@ -166,6 +173,16 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
         // If using mock key, use mock data instead of making real API calls
         if useMockData {
             mockService.fetchPlaces(center: center, categories: categories, showOpenNowOnly: showOpenNowOnly, completion: completion)
+            return
+        }
+        
+        // Generate cache key for this request
+        let cacheKey = cache.generatePlacesCacheKey(center: center, categories: categories, showOpenNowOnly: showOpenNowOnly)
+        
+        // Check if we have cached results
+        if let cachedPlaces = cache.retrievePlaces(forKey: cacheKey) {
+            logger.info("Using cached places for key: \(cacheKey)")
+            completion(.success(cachedPlaces))
             return
         }
         
@@ -297,7 +314,7 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
                                     }
                                     
                                     // Use the first matching category or default to the first category of this type
-                                    let category = matchingCategories.first?.name ?? categoriesOfType.first!.name
+                                    let category = matchingCategories.first?.name ?? categoriesOfType.first?.name ?? "Unknown"
                                     
                                     let place = Place(
                                         placeId: result.place_id, 
@@ -356,6 +373,10 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
                 if showOpenNowOnly {
                     places = places.filter { $0.openNow == true }
                 }
+                
+                // Cache the results before returning
+                self.cache.storePlaces(places, forKey: cacheKey)
+                
                 weakCompletion(.success(places))
             } else {
                 weakCompletion(result)
@@ -367,6 +388,13 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
         // If using mock key, use mock data instead of making real API calls
         if useMockData {
             mockService.fetchPlaceDetails(placeId: placeId, completion: completion)
+            return
+        }
+        
+        // Check if we have cached details for this place
+        if let cachedDetails = cache.retrievePlaceDetails(forPlaceId: placeId) {
+            logger.info("Using cached details for place ID: \(placeId)")
+            completion(.success(cachedDetails))
             return
         }
         
@@ -474,6 +502,10 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
                         photos: photos,
                         reviews: response.result.reviews?.map { ($0.author_name, $0.text, $0.rating) } ?? []
                     )
+                    
+                    // Cache the details before returning
+                    self.cache.storePlaceDetails(details, forPlaceId: placeId)
+                    
                     weakCompletion(.success(details))
                 } catch {
                     weakCompletion(.failure(.decodingError))
