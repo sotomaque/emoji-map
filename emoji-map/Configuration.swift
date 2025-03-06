@@ -17,8 +17,83 @@ struct Configuration {
     
     /// Google Places API key
     static var googlePlacesAPIKey: String {
-        // For production, use the key from the secure storage
-        return getAPIKey(named: "GooglePlacesAPIKey") ?? fallbackToMockKey()
+        // Log all environment variables for debugging
+        logger.debug("🔍 DEBUG: Checking for API key...")
+        
+        // Print all environment variables to help debug
+        let allEnvVars = ProcessInfo.processInfo.environment
+        logger.debug("🔍 DEBUG: Environment variables count: \(allEnvVars.count)")
+        
+        // Check specifically for our key
+        if let key = ProcessInfo.processInfo.environment["GOOGLE_PLACES_API_KEY"] {
+            if !key.isEmpty {
+                logger.notice("✅ SUCCESS: Found API key in environment variables: \(key.prefix(4))...")
+                return key
+            } else {
+                logger.error("❌ ERROR: API key found in environment but is empty")
+            }
+        } else {
+            logger.error("❌ ERROR: GOOGLE_PLACES_API_KEY not found in environment variables")
+            
+            // List all environment variable keys to help debug
+            let allKeys = allEnvVars.keys.joined(separator: ", ")
+            logger.debug("🔍 DEBUG: Available environment variables: \(allKeys)")
+        }
+        
+        // Then try to get from keychain (for production)
+        if let key = KeychainHelper.get(service: "com.emoji-map", account: "GooglePlacesAPIKey") {
+            if !key.isEmpty {
+                logger.notice("✅ SUCCESS: Using API key from keychain")
+                return key
+            } else {
+                logger.error("❌ ERROR: API key found in keychain but is empty")
+            }
+        } else {
+            logger.error("❌ ERROR: No API key found in keychain")
+        }
+        
+        // Check if .env file exists in the bundle
+        if let envURL = Bundle.main.url(forResource: ".env", withExtension: nil) {
+            logger.debug("🔍 DEBUG: .env file found at path: \(envURL.path)")
+            
+            do {
+                let contents = try String(contentsOf: envURL, encoding: .utf8)
+                logger.debug("🔍 DEBUG: .env file contents: \(contents)")
+                
+                // Try to parse the .env file manually
+                let lines = contents.components(separatedBy: .newlines)
+                for line in lines {
+                    let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmedLine.hasPrefix("GOOGLE_PLACES_API_KEY=") {
+                        let key = trimmedLine.dropFirst("GOOGLE_PLACES_API_KEY=".count)
+                        let cleanKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !cleanKey.isEmpty {
+                            logger.notice("✅ SUCCESS: Found API key in .env file: \(cleanKey.prefix(4))...")
+                            
+                            // Store in keychain for future use
+                            storeAPIKey(String(cleanKey), named: "GooglePlacesAPIKey")
+                            
+                            return String(cleanKey)
+                        }
+                    }
+                }
+                
+                logger.error("❌ ERROR: GOOGLE_PLACES_API_KEY not found in .env file contents")
+            } catch {
+                logger.error("❌ ERROR: Failed to read .env file: \(error.localizedDescription)")
+            }
+        } else {
+            logger.error("❌ ERROR: .env file not found in bundle")
+            
+            // List all bundle resources to help debug
+            if let resourcePaths = Bundle.main.paths(forResourcesOfType: nil, inDirectory: nil) as [String]? {
+                let resourceNames = resourcePaths.map { URL(fileURLWithPath: $0).lastPathComponent }
+                logger.debug("🔍 DEBUG: Bundle resources: \(resourceNames.joined(separator: ", "))")
+            }
+        }
+        
+        // Fallback to mock key
+        return fallbackToMockKey()
     }
     
     /// Flag to determine if we're using a mock key
@@ -31,46 +106,11 @@ struct Configuration {
     
     // MARK: - Private Methods
     
-    /// Get an API key from the keychain
-    /// - Parameter keyName: The name of the key to retrieve
-    /// - Returns: The API key, or nil if not found
-    private static func getAPIKey(named keyName: String) -> String? {
-        // First try to get from CustomInfo.plist (primary source)
-        if let customInfoPath = Bundle.main.path(forResource: "CustomInfo", ofType: "plist"),
-           let customInfoDict = NSDictionary(contentsOfFile: customInfoPath),
-           let key = customInfoDict[keyName] as? String, !key.isEmpty {
-            logger.info("Using API key from CustomInfo.plist: \(keyName)")
-            return key
-        }
-        
-        // Then try to get from Config.plist (secondary source)
-        if let configPath = Bundle.main.path(forResource: "Config", ofType: "plist"),
-           let configDict = NSDictionary(contentsOfFile: configPath),
-           let key = configDict[keyName] as? String, !key.isEmpty {
-            logger.info("Using API key from Config.plist: \(keyName)")
-            return key
-        }
-        
-        // Then try to get from Info.plist as fallback (for backward compatibility)
-        if let key = Bundle.main.object(forInfoDictionaryKey: keyName) as? String, !key.isEmpty {
-            logger.info("Using API key from Info.plist: \(keyName)")
-            return key
-        }
-        
-        // Then try to get from keychain (for production)
-        if let key = KeychainHelper.get(service: "com.emoji-map", account: keyName), !key.isEmpty {
-            logger.info("Using API key from keychain: \(keyName)")
-            return key
-        }
-        
-        return nil
-    }
-    
     /// Fallback to using a mock key for development
     /// - Returns: A placeholder API key
     private static func fallbackToMockKey() -> String {
         _isUsingMockKey = true
-        logger.warning("No API key found, using mock data")
+        logger.warning("⚠️ WARNING: No API key found, using mock data")
         return "mock_api_key_for_development"
     }
     
@@ -80,15 +120,33 @@ struct Configuration {
     ///   - keyName: The name of the key
     static func storeAPIKey(_ key: String, named keyName: String) {
         guard !key.isEmpty else {
-            logger.error("Attempted to store empty API key")
+            logger.error("❌ ERROR: Attempted to store empty API key")
             return
         }
         
         do {
             try KeychainHelper.set(key, service: "com.emoji-map", account: keyName)
-            logger.info("Stored API key in keychain: \(keyName)")
+            logger.notice("✅ SUCCESS: Stored API key in keychain: \(keyName)")
         } catch {
-            logger.error("Failed to store API key in keychain: \(error.localizedDescription)")
+            logger.error("❌ ERROR: Failed to store API key in keychain: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Check if an API key is stored in the keychain
+    /// - Parameter keyName: The name of the key to check
+    /// - Returns: True if the key exists in the keychain, false otherwise
+    static func hasStoredAPIKey(_ keyName: String) -> Bool {
+        return KeychainHelper.get(service: "com.emoji-map", account: keyName) != nil
+    }
+    
+    /// Delete an API key from the keychain
+    /// - Parameter keyName: The name of the key to delete
+    static func deleteAPIKey(named keyName: String) {
+        do {
+            try KeychainHelper.delete(service: "com.emoji-map", account: keyName)
+            logger.notice("✅ SUCCESS: Deleted API key from keychain: \(keyName)")
+        } catch {
+            logger.error("❌ ERROR: Failed to delete API key from keychain: \(error.localizedDescription)")
         }
     }
 }
