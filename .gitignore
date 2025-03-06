@@ -3,3 +3,6 @@
 
 # env variables
 /emoji-map/config.plist
+
+# ios breakpoints
+emoji-map.xcodeproj/xcuserdata/enrique.xcuserdatad/xcdebugger/Breakpoints_v2.xcbkptlist

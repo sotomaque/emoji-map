@@ -6,6 +6,9 @@
 //
 
 import Foundation
+import UIKit
+import MapKit
+import os
 
 // Thread-safe actor for managing shared state
 @MainActor
@@ -17,18 +20,71 @@ class PlaceDetailViewModel: ObservableObject {
     @Published var showError = false
     @Published var isFavorite = false
     @Published var userRating: Int = 0
+    @Published var distanceFromUser: Double? = nil
     
-    private let service: GooglePlacesServiceProtocol
+    // Computed property to convert tuple reviews to Review objects
+    var reviewObjects: [Review] {
+        return reviews.map { Review(authorName: $0.0, text: $0.1, rating: $0.2) }
+    }
+    
+    // Computed property to format the distance in a user-friendly way
+    var formattedDistance: String {
+        return userPreferences.formatDistance(distanceFromUser)
+    }
+    
     private let userPreferences: UserPreferences
     var currentPlaceId: String?
     
-    init(service: GooglePlacesServiceProtocol = GooglePlacesService(), userPreferences: UserPreferences = UserPreferences()) {
-        self.service = service
-        self.userPreferences = userPreferences
+    // Make service a private variable instead of a constant so we can update it
+    private var service: GooglePlacesServiceProtocol
+    
+    // Logger for debugging
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "PlaceDetailViewModel")
+    
+    // Cache instance
+    private let cache = NetworkCache.shared
+    
+    init(service: GooglePlacesServiceProtocol? = nil, userPreferences: UserPreferences? = nil) {
+        // Use the provided service or get the shared instance
+        self.service = service ?? ServiceContainer.shared.googlePlacesService
+        // Use the provided userPreferences or get the shared instance
+        self.userPreferences = userPreferences ?? ServiceContainer.shared.userPreferences
+    }
+    
+    // Method to update the service after initialization - no longer needed but kept for compatibility
+    func updateService(_ newService: GooglePlacesServiceProtocol) {
+        // Cancel any pending requests on the old service
+        self.service.cancelPlaceDetailsRequests()
+        // Update to the new service
+        self.service = newService
+    }
+    
+    // Calculate the distance from the user to the place
+    func calculateDistanceFromUser(place: Place, userLocation: CLLocation?) {
+        guard let userLocation = userLocation else {
+            distanceFromUser = nil
+            return
+        }
+        
+        let placeLocation = CLLocation(
+            latitude: place.coordinate.latitude,
+            longitude: place.coordinate.longitude
+        )
+        
+        // Calculate the distance in meters
+        distanceFromUser = userLocation.distance(from: placeLocation)
     }
     
     func fetchDetails(for place: Place) {
-        isLoading = true
+        // Use a task to delay showing the loading indicator
+        let loadingTask = Task { @MainActor in
+            // Wait a short delay before showing loading indicator
+            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+            if !Task.isCancelled {
+                isLoading = true
+            }
+        }
+        
         error = nil
         showError = false
         currentPlaceId = place.placeId
@@ -39,25 +95,58 @@ class PlaceDetailViewModel: ObservableObject {
         // Get user rating if available
         userRating = userPreferences.getRating(for: place.placeId) ?? 0
         
-        // Cancel any previous requests before starting a new one
-        service.cancelPlaceDetailsRequests()
+        logger.info("Fetching details for place: \(place.name) (ID: \(place.placeId))")
+        
+        // Check if we have cached details for this place
+        if let cachedDetails = cache.retrievePlaceDetails(forPlaceId: place.placeId) {
+            logger.info("Using cached details for place ID: \(place.placeId)")
+            
+            // Cancel the loading indicator task if it hasn't shown yet
+            loadingTask.cancel()
+            isLoading = false
+            
+            // Update UI with cached data
+            self.photos = cachedDetails.photos
+            self.reviews = cachedDetails.reviews
+            return
+        }
+        
+        // No cache hit, need to fetch from network
+        logger.info("Fetching details from network for place ID: \(place.placeId)")
+        
+        // Only cancel previous requests if the place ID has changed
+        if currentPlaceId != place.placeId {
+            service.cancelPlaceDetailsRequests()
+        }
         
         service.fetchPlaceDetails(placeId: place.placeId) { [weak self] result in
             // Ensure UI updates happen on the main thread
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 
+                // Cancel the loading indicator task if it hasn't shown yet
+                loadingTask.cancel()
                 self.isLoading = false
                 
                 switch result {
                 case .success(let details):
+                    self.logger.info("Successfully fetched details for place ID: \(place.placeId)")
                     self.photos = details.photos
                     self.reviews = details.reviews
                 case .failure(let networkError):
                     self.error = networkError
+                    
+                    // Handle specific error types
+                    if case .noResults = networkError {
+                        // Provide haptic feedback for no results
+                        let feedbackGenerator = UINotificationFeedbackGenerator()
+                        feedbackGenerator.prepare()
+                        feedbackGenerator.notificationOccurred(.warning)
+                    }
+                    
                     // Only show error alert if it's not a cancelled request
                     self.showError = networkError.shouldShowAlert
-                    print("Error fetching place details: \(networkError.localizedDescription)")
+                    self.logger.error("Error fetching place details: \(networkError.localizedDescription)")
                 }
             }
         }
@@ -68,38 +157,62 @@ class PlaceDetailViewModel: ObservableObject {
         
         if isFavorite {
             userPreferences.removeFavorite(placeId: placeId)
+            isFavorite = false
         } else {
-            // We need the full place object to add as favorite
-            // This is a limitation of our current implementation
-            // In a real app, we might store the current place or fetch it again
-            print("Cannot add to favorites without full place object")
-            // For now, we'll just toggle the UI state
+            // We can't add to favorites without the full place object
+            // This method should not be called directly - use setFavorite instead
+            logger.warning("Cannot add to favorites without full place object. Use setFavorite instead.")
+            // Don't change the isFavorite state since we couldn't actually add it
         }
         
-        isFavorite.toggle()
+        // Notify UI of change
+        objectWillChange.send()
     }
     
     func setFavorite(_ place: Place, isFavorite: Bool) {
+        logger.info("Setting favorite status for \(place.name) to \(isFavorite)")
+        
         if isFavorite {
             userPreferences.addFavorite(place)
         } else {
             userPreferences.removeFavorite(placeId: place.placeId)
         }
+        
+        // Update the local state
         self.isFavorite = isFavorite
+        
+        // Notify UI of change
+        objectWillChange.send()
     }
     
     func ratePlace(rating: Int) {
         guard let placeId = currentPlaceId else { return }
         userPreferences.ratePlace(placeId: placeId, rating: rating)
         userRating = rating
+        
+        // Notify UI of change
+        objectWillChange.send()
     }
     
     func retryFetchDetails(for place: Place) {
         fetchDetails(for: place)
     }
     
+    // Method to call when the view disappears
+    func onViewDisappear() {
+        // Don't cancel requests when the view disappears
+        // This allows the requests to complete even if the view is dismissed
+        // The data will be available if the view is shown again
+    }
+    
+    // Method to update the distance when the user's location changes
+    func updateDistanceFromUser(place: Place, userLocation: CLLocation?) {
+        calculateDistanceFromUser(place: place, userLocation: userLocation)
+    }
+    
     // Cancel all pending requests when the view model is deallocated
     deinit {
-        service.cancelAllRequests()
+        // Only cancel place details requests, not all requests
+        service.cancelPlaceDetailsRequests()
     }
 }

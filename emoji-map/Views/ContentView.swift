@@ -11,186 +11,285 @@ import MapKit
 struct ContentView: View {
     @EnvironmentObject private var viewModel: MapViewModel
     @State private var lastHapticTime: Date = Date.distantPast
+    @State private var centerCoordinate = CLLocationCoordinate2D()
+    @State private var lastRegionChangeTime: Date = Date.distantPast
+    @State private var debounceTimer: Timer?
+    @State private var mapPosition: MapCameraPosition = .automatic
+    @State private var showSettings = false
+    @State private var showTooltip = false
+    @State private var tooltipTimer: Timer?
     
     var body: some View {
         ZStack {
-            // Map as base layer
-            Map(
-                coordinateRegion: $viewModel.region,
-                annotationItems: viewModel.filteredPlaces
-            ) { place in
-                MapAnnotation(coordinate: place.coordinate) {
-                    Button(action: {
-                        viewModel.selectedPlace = place
-                    }) {
-                        VStack(spacing: 0) {
-                            // Show rating or star icon above emoji for favorites
-                            if viewModel.isFavorite(placeId: place.placeId) {
-                                if let rating = viewModel.getRating(for: place.placeId), rating > 0 {
-                                    // Show numeric rating with star
-                                    HStack(spacing: 1) {
-                                        Text("\(rating)")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundColor(.yellow)
-                                        
-                                        Image(systemName: "star.fill")
-                                            .font(.system(size: 8))
-                                            .foregroundColor(.yellow)
-                                    }
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 2)
-                                    .background(Color.black.opacity(0.6))
-                                    .cornerRadius(8)
-                                    .offset(y: 2)
-                                } else {
-                                    // Show outline star for favorites without rating
-                                    Image(systemName: "star")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.yellow)
-                                        .offset(y: 2)
+            // Map as base layer - updated for iOS 17
+            Map(position: $mapPosition) {
+                // Use the new MapContentBuilder syntax
+                ForEach(viewModel.filteredPlaces) { place in
+                    Annotation(
+                        coordinate: place.coordinate,
+                        content: {
+                            PlaceAnnotation(
+                                emoji: viewModel.categoryEmoji(for: place.category),
+                                isFavorite: viewModel.isFavorite(placeId: place.placeId),
+                                rating: viewModel.getRating(for: place.placeId),
+                                isLoading: viewModel.isLoading,
+                                onTap: {
+                                    viewModel.selectedPlace = place
                                 }
-                            }
-                            
-                            Text(viewModel.categoryEmoji(for: place.category))
-                                .font(.system(size: 30))
-                                .frame(width: 40, height: 40)
-                                .background(
-                                    viewModel.isFavorite(placeId: place.placeId) ?
-                                        Circle()
-                                            .fill(Color.yellow.opacity(0.3))
-                                            .frame(width: 44, height: 44)
-                                    : nil
-                                )
+                            )
+                        },
+                        label: {
+                            // Empty label since we're using custom annotation view
+                            EmptyView()
                         }
-                    }
-                    .scaleEffect(viewModel.isLoading ? 0.8 : 1.0) // Subtle scale effect during loading
-                    .opacity(viewModel.isLoading ? 0.6 : 1.0) // Fade out during loading
-                    .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
+                    )
+                }
+                
+                // Add user location marker
+                UserAnnotation()
+            }
+            .mapStyle(.standard)
+            .mapControls {
+                // Optional: Add map controls if needed
+                // MapCompass()
+                // MapScaleView()
+            }
+            .onMapCameraChange { context in
+                // Update the region and center coordinate when the map camera changes
+                let newRegion = MKCoordinateRegion(
+                    center: context.region.center,
+                    span: context.region.span
+                )
+                viewModel.region = newRegion
+                
+                // Update center coordinate and handle region change with debounce
+                let newCenter = newRegion.center
+                if centerCoordinate.latitude != newCenter.latitude || centerCoordinate.longitude != newCenter.longitude {
+                    centerCoordinate = newCenter
+                    handleRegionChangeWithDebounce()
                 }
             }
             .edgesIgnoringSafeArea(.all)
             .overlay(
-                // Map overlay gradient when loading
+                // Map overlay for loading - more subtle approach
                 viewModel.isLoading ?
-                    Rectangle()
-                        .fill(Color.white.opacity(0.2))
-                        .edgesIgnoringSafeArea(.all)
-                : nil
+                    ZStack {
+                        // Semi-transparent overlay that doesn't completely hide the map
+                        Rectangle()
+                            .fill(Color.white.opacity(0.05))
+                            .edgesIgnoringSafeArea(.all)
+                    }
+                    : nil
             )
             
             // Overlay layers
             VStack {
                 // Configuration warning banner
                 if viewModel.showConfigWarning {
-                    configurationWarningBanner
+                    WarningBanner(
+                        message: viewModel.configWarningMessage,
+                        isVisible: viewModel.showConfigWarning
+                    )
+                }
+                
+                // Loading indicator at the top - minimal style to prevent layout shifts
+                if viewModel.isLoading {
+                    UnifiedLoadingIndicator(
+                        message: "Loading places...",
+                        color: .blue,
+                        style: .minimal,
+                        backgroundColor: Color(.systemBackground).opacity(0.8)
+                    )
+                    .transition(.opacity)
+                    .padding(.top, 8)
                 }
                 
                 Spacer()
             }
             
-            if !viewModel.isLocationAvailable {
-                // Progress view when location isn't available
+            if !viewModel.isLocationAvailable && !viewModel.isLocationPermissionDenied {
+                // Progress view when location isn't available but not denied - use minimal style
                 VStack {
-                    ProgressView("Finding your location...")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(Color.black.opacity(0.7))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .shadow(radius: 4)
+                    Spacer()
+                    
+                    UnifiedLoadingIndicator(
+                        message: "Finding your location...",
+                        style: .minimal,
+                        backgroundColor: Color(.systemBackground).opacity(0.8)
+                    )
+                    .padding(.bottom, 40)
+                    
+                    Spacer()
                 }
             } else {
-                // Normal content when location is available
+                // Normal content when location is available or permission is denied
                 VStack {
+                    // Emoji category selector with integrated favorites button - HIGHER Z-INDEX
                     VStack(spacing: 4) {
-                        // Category count indicator - moved to top right
-                        HStack {
-                            Spacer()
-                            
-                            if !viewModel.selectedCategories.isEmpty {
-                                Text("\(viewModel.selectedCategories.count) \(viewModel.selectedCategories.count == 1 ? "category" : "categories")")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.gray)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        Capsule()
-                                            .fill(Color(.systemBackground).opacity(0.8))
-                                            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-                                    )
-                            }
-                        }
-                        .padding(.top, 8)
-                        .padding(.trailing, 8)
-                        
-                        // Emoji category selector with integrated favorites button
                         EmojiSelector()
                             .disabled(viewModel.isLoading) // Disable interaction during loading
                             .opacity(viewModel.isLoading ? 0.7 : 1.0) // Subtle fade during loading
                     }
+                    .zIndex(50) // Higher z-index to ensure it's above the notification banner
                     
                     Spacer() // Push selector to the top
                     
-                    // Enhanced loading indicator
-                    if viewModel.isLoading {
-                        loadingIndicator
+                    if viewModel.showSearchHereButton {
+                        SearchHereButton(
+                            action: {
+                                viewModel.searchHere()
+                            },
+                            isLoading: viewModel.isLoading
+                        )
+                        .padding(.bottom, 40)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.showSearchHereButton)
                     }
+                }
+                
+                // Notification banner - LOWER Z-INDEX
+                // Positioned as a separate element in the main ZStack
+                if viewModel.showNotification {
+                    VStack {
+                        Spacer() // Push to bottom
+                        
+                        NotificationBanner(
+                            message: viewModel.notificationMessage,
+                            isVisible: true,
+                            onAppear: {
+                                // Trigger haptic feedback when notification appears
+                                triggerHapticFeedback()
+                            }
+                        )
+                        .padding(.bottom, 100) // Add padding to position above bottom buttons
+                    }
+                    .zIndex(10) // Lower z-index to ensure it's below the emoji selector
                 }
                 
                 // Recenter button
-                Button(action: {
-                    withAnimation {
-                        viewModel.recenterMap()
+                RecenterButton(
+                    isLoading: viewModel.isLoading,
+                    action: {
+                        withAnimation {
+                            viewModel.recenterMap()
+                        }
                     }
-                }) {
-                    Image(systemName: "location.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.white)
-                        .padding(12)
-                        .background(Color.blue)
-                        .clipShape(Circle())
-                        .shadow(radius: 4)
-                }
+                )
                 .position(x: UIScreen.main.bounds.width - 40, y: UIScreen.main.bounds.height - 120) // Bottom-right corner
-                .disabled(viewModel.isLoading) // Disable during loading
-                .opacity(viewModel.isLoading ? 0.6 : 1.0) // Fade during loading
-                .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
+                .zIndex(20) // Higher than notification but lower than emoji selector
+                
+                // FiltersButton - moved to bottom left
+                Button(action: {
+                    viewModel.showFilters = true
+                }) {
+                    FiltersButton(
+                        activeFilterCount: viewModel.activeFilterCount,
+                        isLoading: viewModel.isLoading
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(viewModel.isLoading)
+                .position(x: 40, y: UIScreen.main.bounds.height - 120) // Bottom-left corner
+                .zIndex(20) // Higher than notification but lower than emoji selector
+                // Add long press gesture for settings (easter egg)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 1.0)
+                        .onEnded { _ in
+                            // Provide escalating haptic feedback
+                            provideSettingsHapticFeedback()
+                            
+                            // Show settings
+                            showSettings = true
+                        }
+                )
+                // Add a tooltip to hint at the hidden feature
+                .overlay(
+                    ZStack {
+                        if showTooltip {
+                            VStack {
+                                Text("Hold for Settings")
+                                    .font(.caption)
+                                    .padding(8)
+                                    .background(Color.black.opacity(0.7))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(8)
+                                    .offset(y: -50)
+                                    .transition(.opacity)
+                            }
+                        }
+                    }
+                    .animation(.easeInOut, value: showTooltip)
+                )
             }
             
-            // Notification banner
-            VStack {
-                Spacer()
-                
-                if viewModel.showNotification {
-                    Text(viewModel.notificationMessage)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white)
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 20)
-                        .background(
-                            Capsule()
-                                .fill(Color.black.opacity(0.8))
-                                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-                        )
-                        .padding(.bottom, 30)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .onAppear {
-                            // Trigger haptic feedback when notification appears
-                            triggerHapticFeedback()
+            // Location permission view overlay
+            if viewModel.showLocationPermissionView {
+                ZStack {
+                    Color.black.opacity(0.4)
+                        .edgesIgnoringSafeArea(.all)
+                        .transition(.opacity)
+                    
+                    LocationPermissionView(
+                        onOpenSettings: {
+                            viewModel.openAppSettings()
+                        },
+                        onContinueWithoutLocation: {
+                            viewModel.continueWithoutLocation()
                         }
+                    )
+                    .transition(.scale)
                 }
+                .zIndex(100) // Ensure it's above everything else
             }
-            .animation(.spring(response: 0.4), value: viewModel.showNotification)
-            .zIndex(100) // Ensure it's above other elements
         }
         .onAppear {
             viewModel.onAppear()
+            // Initialize the center coordinate
+            centerCoordinate = viewModel.region.center
+            
+            // Set initial map position
+            mapPosition = .region(viewModel.region)
+            
+            // Force UI refresh to ensure favorites are properly displayed
+            viewModel.objectWillChange.send()
+            
+            // Set up a publisher to observe region changes
+            viewModel.onRegionDidChange = { newRegion in
+                // Update map position when region changes
+                self.mapPosition = .region(newRegion)
+                print("Map region updated to: \(newRegion.center)")
+            }
+            
+            // Show tooltip on first launch
+            if !viewModel.preferences.hasShownSettingsTooltip {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    showTooltip = true
+                    
+                    // Hide tooltip after 5 seconds
+                    tooltipTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { _ in
+                        withAnimation {
+                            showTooltip = false
+                        }
+                        viewModel.preferences.markSettingsTooltipAsShown()
+                    }
+                }
+            }
         }
-        .onChange(of: CoordinateWrapper(viewModel.region.center)) { _, newValue in
-            viewModel.onRegionChange(newCenter: newValue)
+        .onDisappear {
+            // Clean up the timer when the view disappears
+            debounceTimer?.invalidate()
+            debounceTimer = nil
+            
+            // Remove the region change callback
+            viewModel.onRegionDidChange = nil
+            
+            tooltipTimer?.invalidate()
         }
         .sheet(item: $viewModel.selectedPlace) { place in
-            PlaceDetailView(place: place)
+            NavigationStack {
+                PlaceDetailView(place: place)
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .alert(isPresented: $viewModel.showError, content: {
             Alert(
@@ -202,56 +301,59 @@ struct ContentView: View {
                 secondaryButton: .cancel()
             )
         })
+        // Add sheet for filters
+        .sheet(isPresented: $viewModel.showFilters) {
+            FiltersView(
+                selectedPriceLevels: viewModel.selectedPriceLevels,
+                showOpenNowOnly: viewModel.showOpenNowOnly,
+                minimumRating: viewModel.minimumRating,
+                useLocalRatings: viewModel.useLocalRatings,
+                onApplyFilters: nil
+            )
+            .environmentObject(viewModel)
+        }
+        // Add sheet for settings
+        .sheet(isPresented: $showSettings) {
+            SettingsView(userPreferences: viewModel.preferences)
+        }
     }
     
-    // Enhanced loading indicator
-    private var loadingIndicator: some View {
-        VStack(spacing: 12) {
-            ProgressView()
-                .scaleEffect(1.2)
-                .tint(.white)
-            
-            Text("Loading places...")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.vertical, 16)
-        .padding(.horizontal, 24)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.black.opacity(0.7))
-                .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
-        )
-        .transition(.opacity.combined(with: .scale))
-        .animation(.spring(response: 0.3), value: viewModel.isLoading)
-    }
-    
-    // Configuration warning banner
-    private var configurationWarningBanner: some View {
-        VStack {
-            Text(viewModel.configWarningMessage)
-                .font(.system(size: 14, weight: .medium))
-                .multilineTextAlignment(.center)
-                .foregroundColor(.white)
-                .padding(.vertical, 8)
-                .padding(.horizontal, 16)
-                .background(Color.orange)
-                .cornerRadius(0)
-                .frame(maxWidth: .infinity)
-        }
-        .transition(.move(edge: .top))
-        .animation(.easeInOut, value: viewModel.showConfigWarning)
+    // Function to provide escalating haptic feedback for settings access
+    private func provideSettingsHapticFeedback() {
+        // Use the centralized HapticsManager for escalating feedback
+        HapticsManager.shared.escalatingSequence()
     }
     
     // Haptic feedback function
     private func triggerHapticFeedback() {
         // Prevent multiple haptics in quick succession
         let now = Date()
-        if now.timeIntervalSince(lastHapticTime) > 0.5 {
-            let generator = UINotificationFeedbackGenerator()
-            generator.notificationOccurred(.success)
+        if now.timeIntervalSince(lastHapticTime) > 1.0 {
+            HapticsManager.shared.notification(type: .success)
             lastHapticTime = now
+        }
+    }
+    
+    private func handleRegionChangeWithDebounce() {
+        // Cancel any existing timer on the main thread
+        debounceTimer?.invalidate()
+        
+        // Create a new timer that will fire after a short delay
+        debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
+            // Only process region changes that are at least 0.3 seconds apart
+            let now = Date()
+            if now.timeIntervalSince(self.lastRegionChangeTime) >= 0.3 {
+                self.lastRegionChangeTime = now
+                
+                // Ensure we're on the main thread when calling viewModel methods
+                if Thread.isMainThread {
+                    self.viewModel.onRegionChange(newCenter: CoordinateWrapper(self.centerCoordinate))
+                } else {
+                    DispatchQueue.main.async {
+                        self.viewModel.onRegionChange(newCenter: CoordinateWrapper(self.centerCoordinate))
+                    }
+                }
+            }
         }
     }
 }

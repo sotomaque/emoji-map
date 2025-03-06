@@ -10,9 +10,20 @@ import MapKit
 
 struct PlaceDetailView: View {
     let place: Place
-    @StateObject private var viewModel = PlaceDetailViewModel()
+    @StateObject private var viewModel: PlaceDetailViewModel
     @State private var isAppearing = false
     @EnvironmentObject private var mapViewModel: MapViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var distanceUpdateTimer: Timer?
+    @State private var showMapAppActionSheet = false
+    
+    // Initialize with the place and create the view model with the shared service
+    init(place: Place) {
+        self.place = place
+        // Create the view model with a _StateObject wrapper
+        // This ensures the view model is created only once
+        _viewModel = StateObject(wrappedValue: PlaceDetailViewModel())
+    }
     
     var body: some View {
         ScrollView {
@@ -32,6 +43,22 @@ struct PlaceDetailView: View {
                 // MARK: Reviews
                 reviewsSection
                 
+                // Add a retry button if there's an error
+                if viewModel.error != nil && !viewModel.isLoading {
+                    Button(action: {
+                        viewModel.retryFetchDetails(for: place)
+                    }) {
+                        HStack {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Retry Loading Details")
+                        }
+                        .padding()
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                    .padding(.top, 20)
+                }
+                
                 Spacer()
             }
             .padding(.vertical)
@@ -41,7 +68,20 @@ struct PlaceDetailView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle(place.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    dismiss()
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(.gray)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Close")
+            }
+            
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
                     toggleFavorite()
@@ -58,24 +98,41 @@ struct PlaceDetailView: View {
                     Color(.systemBackground)
                         .edgesIgnoringSafeArea(.all)
                     
-                    VStack(spacing: 16) {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                        
-                        Text("Loading details...")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                    }
+                    LoadingIndicator(message: "Loading details...")
                 }
             }
         )
         .onAppear {
+            // No need to use reflection anymore - the view model will use the shared service
             viewModel.fetchDetails(for: place)
+            
+            // Calculate distance from user
+            viewModel.calculateDistanceFromUser(place: place, userLocation: mapViewModel.locationManager.location)
+            
+            // Set up a timer to update the distance periodically
+            distanceUpdateTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
+                updateDistance()
+            }
             
             // Slight delay before showing content for smoother transition
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 isAppearing = true
             }
+        }
+        .onDisappear {
+            // Ensure we don't lose the favorite status when the view disappears
+            // This prevents the bug where closing the view removes the place from favorites
+            if viewModel.isFavorite {
+                // Make sure the place stays favorited in both view models
+                mapViewModel.objectWillChange.send()
+            }
+            
+            // Notify the view model that the view is disappearing
+            viewModel.onViewDisappear()
+            
+            // Invalidate the timer when the view disappears
+            distanceUpdateTimer?.invalidate()
+            distanceUpdateTimer = nil
         }
         .alert(isPresented: $viewModel.showError, content: {
             Alert(
@@ -89,10 +146,22 @@ struct PlaceDetailView: View {
         })
     }
     
+    // Method to update the distance from the user to the place
+    private func updateDistance() {
+        viewModel.updateDistanceFromUser(place: place, userLocation: mapViewModel.locationManager.location)
+    }
+    
     private func toggleFavorite() {
-        viewModel.setFavorite(place, isFavorite: !viewModel.isFavorite)
-        // Also update in the map view model to keep state in sync
+        // First update the MapViewModel to ensure the place is properly added/removed from favorites
         mapViewModel.toggleFavorite(for: place)
+        
+        // Then update our local ViewModel to stay in sync
+        viewModel.setFavorite(place, isFavorite: mapViewModel.isFavorite(placeId: place.placeId))
+        
+        // Provide haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
     }
     
     // MARK: - Subviews
@@ -102,7 +171,7 @@ struct PlaceDetailView: View {
                 // Skeleton loading for photos
                 TabView {
                     ForEach(0..<3, id: \.self) { _ in
-                        skeletonPhotoView
+                        SkeletonPhotoView()
                     }
                 }
                 .tabViewStyle(PageTabViewStyle())
@@ -135,7 +204,7 @@ struct PlaceDetailView: View {
                         AsyncImage(url: URL(string: photoUrl)) { phase in
                             switch phase {
                             case .empty:
-                                skeletonPhotoView
+                                SkeletonPhotoView()
                             case .success(let image):
                                 image
                                     .resizable()
@@ -171,31 +240,6 @@ struct PlaceDetailView: View {
         .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
     }
     
-    // Skeleton loading view for photos
-    private var skeletonPhotoView: some View {
-        Rectangle()
-            .fill(
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.gray.opacity(0.2), Color.gray.opacity(0.3), Color.gray.opacity(0.2)]),
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .frame(maxWidth: .infinity, maxHeight: 200)
-            .clipShape(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 16, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 16
-                )
-            )
-            .overlay(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 16, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 16
-                )
-                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-            )
-            .shimmering() // Add shimmer effect
-    }
-    
     private var placeInfoSection: some View {
         VStack(spacing: 8) {
             Text(place.name)
@@ -215,10 +259,46 @@ struct PlaceDetailView: View {
                         .font(.system(size: 14))
                         .foregroundColor(.secondary)
                     
-                    StarRatingDisplayView(rating: viewModel.userRating, size: 14)
+                    StarRatingView(rating: viewModel.userRating, size: 14)
                 }
                 .padding(.top, 4)
             }
+            
+            // Info pills
+            HStack(spacing: 12) {
+                // Distance pill
+                if viewModel.distanceFromUser != nil {
+                    InfoPill(
+                        icon: "location.fill",
+                        text: viewModel.formattedDistance,
+                        color: .blue
+                    )
+                }
+                
+                // Price level pill
+                InfoPill(
+                    icon: "dollarsign.circle.fill",
+                    text: place.formattedPriceLevel,
+                    color: .green
+                )
+                
+                // Rating pill
+                if place.hasRating {
+                    InfoPill(
+                        icon: "star.fill",
+                        text: place.formattedRating,
+                        color: .yellow
+                    )
+                }
+                
+                // Open status pill
+                InfoPill(
+                    icon: place.openNow == true ? "checkmark.circle.fill" : "xmark.circle.fill",
+                    text: place.openStatus,
+                    color: place.openNow == true ? .green : .red
+                )
+            }
+            .padding(.top, 8)
         }
         .padding(.horizontal)
     }
@@ -231,12 +311,18 @@ struct PlaceDetailView: View {
                 .foregroundColor(.primary)
             
             StarRatingView(
-                currentRating: viewModel.userRating,
+                rating: viewModel.userRating,
                 size: 30,
+                isInteractive: true,
                 onRatingChanged: { rating in
                     viewModel.ratePlace(rating: rating)
                     // Also update in the map view model to keep state in sync
                     mapViewModel.ratePlace(placeId: place.placeId, rating: rating)
+                    
+                    // Provide haptic feedback
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.prepare()
+                    generator.impactOccurred()
                 }
             )
             .padding(.vertical, 4)
@@ -249,30 +335,132 @@ struct PlaceDetailView: View {
     }
     
     private var actionButtonsSection: some View {
-        HStack(spacing: 16) {
-            ActionButton(
-                title: viewModel.isFavorite ? "Remove Favorite" : "Add to Favorites",
-                icon: viewModel.isFavorite ? "star.slash.fill" : "star.fill",
-                foregroundColor: .white,
-                backgroundColor: viewModel.isFavorite ? .red : .blue
-            ) {
-                toggleFavorite()
+        VStack(spacing: 16) {
+            HStack(spacing: 16) {
+                ActionButton(
+                    title: viewModel.isFavorite ? "Remove Favorite" : "Add to Favorites",
+                    icon: viewModel.isFavorite ? "star.slash.fill" : "star.fill",
+                    foregroundColor: .white,
+                    backgroundColor: viewModel.isFavorite ? .red : .blue,
+                    action: {
+                        toggleFavorite()
+                    }
+                )
+                .disabled(viewModel.isLoading)
+                .opacity(viewModel.isLoading ? 0.7 : 1.0)
+                
+                ActionButton(
+                    title: "View on Map",
+                    icon: "map.fill",
+                    foregroundColor: .blue,
+                    backgroundColor: Color.blue.opacity(0.1),
+                    hasBorder: true,
+                    action: {
+                        // Use the default map app to view the location
+                        let defaultMapAppName = mapViewModel.preferences.defaultMapApp
+                        let installedApps = MapAppUtility.shared.getInstalledMapApps()
+                        
+                        // Find the default map app
+                        if let defaultApp = installedApps.first(where: { $0.rawValue == defaultMapAppName }) {
+                            // Use the default map app
+                            MapAppUtility.shared.openInMapApp(
+                                mapApp: defaultApp,
+                                coordinate: place.coordinate,
+                                name: place.name
+                            )
+                        } else if let firstApp = installedApps.first {
+                            // Use the first available map app if default is not found
+                            MapAppUtility.shared.openInMapApp(
+                                mapApp: firstApp,
+                                coordinate: place.coordinate,
+                                name: place.name
+                            )
+                        }
+                        
+                        // Dismiss the sheet after launching the map app
+                        dismiss()
+                    }
+                )
+                .disabled(viewModel.isLoading)
+                .opacity(viewModel.isLoading ? 0.7 : 1.0)
+                .contextMenu {
+                    // Context menu to choose a different map app
+                    Text("Open with...")
+                    
+                    ForEach(MapAppUtility.shared.getInstalledMapApps()) { app in
+                        Button {
+                            MapAppUtility.shared.openInMapApp(
+                                mapApp: app,
+                                coordinate: place.coordinate,
+                                name: place.name
+                            )
+                            dismiss()
+                        } label: {
+                            Label(app.rawValue, systemImage: "map.fill")
+                        }
+                    }
+                }
             }
-            .disabled(viewModel.isLoading)
-            .opacity(viewModel.isLoading ? 0.7 : 1.0)
             
+            // Directions button
             ActionButton(
-                title: "View on Map",
-                icon: "map.fill",
-                foregroundColor: .blue,
-                backgroundColor: Color.blue.opacity(0.1),
-                hasBorder: true
-            ) {
-                // Dismiss the sheet and focus on this place on the map
-                mapViewModel.selectedPlace = nil
-            }
+                title: "Get Directions",
+                icon: "location.fill",
+                foregroundColor: .white,
+                backgroundColor: .green,
+                action: {
+                    // Check if we should use the default map app or show options
+                    let defaultMapAppName = mapViewModel.preferences.defaultMapApp
+                    let installedApps = MapAppUtility.shared.getInstalledMapApps()
+                    
+                    // Find the default map app
+                    if let defaultApp = installedApps.first(where: { $0.rawValue == defaultMapAppName }) {
+                        // Use the default map app
+                        MapAppUtility.shared.openInMapApp(
+                            mapApp: defaultApp,
+                            coordinate: place.coordinate,
+                            name: place.name
+                        )
+                    } else {
+                        // Show action sheet to select map app
+                        showMapAppActionSheet = true
+                    }
+                }
+            )
             .disabled(viewModel.isLoading)
             .opacity(viewModel.isLoading ? 0.7 : 1.0)
+            .contextMenu {
+                // Context menu to choose a different map app
+                Text("Open with...")
+                
+                ForEach(MapAppUtility.shared.getInstalledMapApps()) { app in
+                    Button {
+                        MapAppUtility.shared.openInMapApp(
+                            mapApp: app,
+                            coordinate: place.coordinate,
+                            name: place.name
+                        )
+                    } label: {
+                        Label(app.rawValue, systemImage: "location.fill")
+                    }
+                }
+            }
+            .confirmationDialog("Open in Maps", isPresented: $showMapAppActionSheet, titleVisibility: .visible) {
+                // Get installed map apps
+                ForEach(MapAppUtility.shared.getInstalledMapApps()) { app in
+                    Button(app.rawValue) {
+                        MapAppUtility.shared.openInMapApp(
+                            mapApp: app,
+                            coordinate: place.coordinate,
+                            name: place.name
+                        )
+                    }
+                }
+                
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Choose a map app to get directions to \(place.name)")
+            }
         }
         .padding(.horizontal)
         .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
@@ -289,7 +477,7 @@ struct PlaceDetailView: View {
                 // Skeleton loading for reviews
                 VStack(spacing: 12) {
                     ForEach(0..<3, id: \.self) { _ in
-                        skeletonReviewCard
+                        SkeletonReviewCard()
                     }
                 }
             } else if viewModel.error != nil {
@@ -311,146 +499,53 @@ struct PlaceDetailView: View {
                 .frame(maxWidth: .infinity)
                 .padding()
             } else if viewModel.reviews.isEmpty {
-                Text("No reviews available")
+                Text("No reviews yet")
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
             } else {
-                ForEach(viewModel.reviews, id: \.0) { (
-                    author,
-                    comment,
-                    rating
-                ) in
-                    ReviewCard(author: author, comment: comment, rating: rating)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                // Display actual reviews
+                ForEach(viewModel.reviewObjects) { review in
+                    reviewCard(for: review)
                 }
             }
         }
         .padding(.horizontal)
     }
     
-    // Skeleton loading view for review cards
-    private var skeletonReviewCard: some View {
+    private func reviewCard(for review: Review) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(width: 120, height: 16)
-                    .cornerRadius(4)
-                
-                Spacer()
-                
-                HStack(spacing: 4) {
-                    ForEach(1...5, id: \.self) { _ in
-                        Circle()
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(width: 14, height: 14)
-                    }
-                }
-            }
-            
-            Rectangle()
-                .fill(Color.gray.opacity(0.2))
-                .frame(height: 14)
-                .cornerRadius(4)
-            
-            Rectangle()
-                .fill(Color.gray.opacity(0.2))
-                .frame(height: 14)
-                .cornerRadius(4)
-                .padding(.trailing, 40)
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
-        .shimmering() // Add shimmer effect
-    }
-}
-
-// MARK: - Supporting Views
-struct ActionButton: View {
-    let title: String
-    let icon: String
-    let foregroundColor: Color
-    let backgroundColor: Color
-    let hasBorder: Bool
-    let action: () -> Void
-    
-    init(
-        title: String,
-        icon: String,
-        foregroundColor: Color,
-        backgroundColor: Color,
-        hasBorder: Bool = false,
-        action: @escaping () -> Void
-    ) {
-        self.title = title
-        self.icon = icon
-        self.foregroundColor = foregroundColor
-        self.backgroundColor = backgroundColor
-        self.hasBorder = hasBorder
-        self.action = action
-    }
-    
-    var body: some View {
-        Button(action: action) {
-            HStack {
-                Image(systemName: icon)
-                Text(title)
-            }
-            .font(.system(size: 16, weight: .medium))
-            .padding(.vertical, 10)
-            .padding(.horizontal, 16)
-            .foregroundColor(foregroundColor)
-            .background(backgroundColor)
-            .clipShape(Capsule())
-            .overlay {
-                if hasBorder {
-                    Capsule()
-                        .stroke(Color.blue, lineWidth: 1)
-                }
-            }
-        }
-    }
-}
-
-struct ReviewCard: View {
-    let author: String
-    let comment: String
-    let rating: Int
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(author)
+                Text(review.authorName)
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.primary)
+                
                 Spacer()
-                StarRatingDisplayView(rating: rating)
+                
+                Text(review.relativeTimeDescription)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
             }
-            Text(comment)
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
+            
+            if review.rating > 0 {
+                StarRatingView(rating: review.rating)
+                    .padding(.vertical, 2)
+            }
+            
+            if !review.text.isEmpty {
+                Text(review.text)
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding()
         .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .cornerRadius(12)
         .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
     }
 }
 
-//struct StarRatingDisplayView: View {
-//    let rating: Int
-//    
-//    var body: some View {
-//        HStack(spacing: 4) {
-//            ForEach(1...5, id: \.self) { index in
-//                Image(systemName: index <= rating ? "star.fill" : "star")
-//                    .foregroundColor(index <= rating ? .yellow : .gray)
-//                    .font(.system(size: 14))
-//            }
-//        }
-//    }
-//}
 
 // MARK: - Preview
 struct PlaceDetailView_Previews: PreviewProvider {
@@ -465,7 +560,10 @@ struct PlaceDetailView_Previews: PreviewProvider {
                     longitude: -122.4194
                 ),
                 category: "pizza",
-                description: "A cozy place with great food!"
+                description: "A cozy place with great food!",
+                priceLevel: 2,
+                openNow: true,
+                rating: 4.5
             )
         ]
         
@@ -494,43 +592,7 @@ struct PlaceDetailView_Previews: PreviewProvider {
         // Return the preview
         PlaceDetailView(place: dummyPlaces[0])
             .environmentObject(mapViewModel)
+            .frame(height: 600)
             .previewLayout(.sizeThatFits)
-            .padding()
-    }
-}
-
-// MARK: - Shimmer Effect
-extension View {
-    func shimmering() -> some View {
-        self.modifier(ShimmerEffect())
-    }
-}
-
-struct ShimmerEffect: ViewModifier {
-    @State private var phase: CGFloat = 0
-    
-    func body(content: Content) -> some View {
-        content
-            .overlay(
-                GeometryReader { geo in
-                    LinearGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: .clear, location: phase - 0.2),
-                            .init(color: .white.opacity(0.5), location: phase),
-                            .init(color: .clear, location: phase + 0.2)
-                        ]),
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .mask(content)
-                    .frame(width: geo.size.width * 3)
-                    .offset(x: -geo.size.width + (geo.size.width * 3) * phase)
-                }
-            )
-            .onAppear {
-                withAnimation(Animation.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                    self.phase = 1
-                }
-            }
     }
 }
