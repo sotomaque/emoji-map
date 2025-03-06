@@ -20,10 +20,6 @@ jobs:
         with:
           xcode-version: "16.2"
 
-      - name: Install iOS 18.0 Simulator Runtime
-        run: |
-          sudo xcodebuild -downloadPlatform iOS -version 18.0 || echo "Failed to install iOS 18.0 runtime; proceeding with available runtimes"
-
       - name: Resolve Swift Package Dependencies
         run: xcodebuild -resolvePackageDependencies -project emoji-map.xcodeproj
 
@@ -32,7 +28,7 @@ jobs:
           xcodebuild test \
             -project emoji-map.xcodeproj \
             -scheme emoji-map \
-            -destination "platform=iOS Simulator,name=iPhone 16,OS=18.0" \
+            -destination "platform=iOS Simulator,name=iPhone 15,OS=latest" \
             -resultBundlePath TestResults.xcresult
         env:
           DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
