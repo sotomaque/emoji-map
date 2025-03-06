@@ -18,7 +18,12 @@ struct NotificationBanner: View {
                     .background(
                         Capsule()
                             .fill(Color.black.opacity(0.8))
-                            .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                            .shadow(
+                                color: .black.opacity(0.2),
+                                radius: 8,
+                                x: 0,
+                                y: 4
+                            )
                     )
                     .padding(.bottom, 30)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -32,14 +37,16 @@ struct NotificationBanner: View {
     }
 }
 
-#Preview {
-    ZStack {
-        Color.gray.opacity(0.3)
-            .edgesIgnoringSafeArea(.all)
-        
+
+// MARK: Preview
+struct NotificationBannerPreview: PreviewProvider {
+    static var previews: some View {
         NotificationBanner(
             message: "Location updated",
             isVisible: true
         )
+        .padding()
+        .previewLayout(.sizeThatFits)
+        .frame(height: 100)
     }
-} 
+}

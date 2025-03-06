@@ -8,7 +8,10 @@ struct FiltersButton: View {
         ZStack {
             // Background
             Circle()
-                .fill(activeFilterCount > 0 ? Color.blue : Color.black.opacity(0.1))
+                .fill(
+                    activeFilterCount > 0 ? Color.blue : Color.black
+                        .opacity(0.1)
+                )
                 .frame(width: 44, height: 44)
                 .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
             
@@ -29,7 +32,7 @@ struct FiltersButton: View {
                         .font(.system(size: 12, weight: .bold))
                         .foregroundColor(.blue)
                 }
-                .offset(x: 12, y: -12)
+                .offset(x: 16, y: -16)
             }
         }
         .overlay(
@@ -37,16 +40,23 @@ struct FiltersButton: View {
                 .stroke(Color.gray.opacity(0.2), lineWidth: 1)
         )
         .scaleEffect(activeFilterCount > 0 ? 1.1 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: activeFilterCount)
+        .animation(
+            .spring(response: 0.3, dampingFraction: 0.7),
+            value: activeFilterCount
+        )
     }
 }
 
-#Preview {
-    HStack(spacing: 20) {
-        FiltersButton(activeFilterCount: 0, isLoading: false)
-        FiltersButton(activeFilterCount: 3, isLoading: false)
-        FiltersButton(activeFilterCount: 5, isLoading: true)
+
+// MARK: Preview
+struct FiltersButtonPreview: PreviewProvider {
+    static var previews: some View {
+        HStack(spacing: 20) {
+            FiltersButton(activeFilterCount: 0, isLoading: false)
+            FiltersButton(activeFilterCount: 3, isLoading: false)
+            FiltersButton(activeFilterCount: 5, isLoading: true)
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
     }
-    .padding()
-    .previewLayout(.sizeThatFits)
-} 
+}

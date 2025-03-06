@@ -24,19 +24,24 @@ struct WarningBanner: View {
     }
 }
 
-#Preview {
-    VStack {
-        WarningBanner(
-            message: "API key not configured properly",
-            isVisible: true
-        )
-        
-        Spacer()
-        
-        WarningBanner(
-            message: "Network connection lost",
-            isVisible: true,
-            backgroundColor: .red
-        )
+// MARK: Preview
+struct WarningBannerPreview: PreviewProvider {
+    static var previews: some View {
+        VStack {
+            WarningBanner(
+                message: "API key not configured properly",
+                isVisible: true
+            )
+            
+            Spacer()
+            
+            WarningBanner(
+                message: "Network connection lost",
+                isVisible: true,
+                backgroundColor: .red
+            )
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
     }
-} 
+}

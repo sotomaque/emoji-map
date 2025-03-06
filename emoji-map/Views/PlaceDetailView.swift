@@ -197,7 +197,7 @@ struct PlaceDetailView: View {
                         .font(.system(size: 14))
                         .foregroundColor(.secondary)
                     
-                    StarRatingDisplayView(rating: viewModel.userRating, size: 14)
+                    StarRatingView(rating: viewModel.userRating, size: 14)
                 }
                 .padding(.top, 4)
             }
@@ -213,8 +213,9 @@ struct PlaceDetailView: View {
                 .foregroundColor(.primary)
             
             StarRatingView(
-                currentRating: viewModel.userRating,
+                rating: viewModel.userRating,
                 size: 30,
+                isInteractive: true,
                 onRatingChanged: { rating in
                     viewModel.ratePlace(rating: rating)
                     // Also update in the map view model to keep state in sync
@@ -324,7 +325,7 @@ struct PlaceDetailView: View {
             }
             
             if review.rating > 0 {
-                StarRatingDisplayView(rating: review.rating)
+                StarRatingView(rating: review.rating)
                     .padding(.vertical, 2)
             }
             
@@ -388,7 +389,7 @@ struct PlaceDetailView_Previews: PreviewProvider {
         // Return the preview
         PlaceDetailView(place: dummyPlaces[0])
             .environmentObject(mapViewModel)
+            .frame(height: 600)
             .previewLayout(.sizeThatFits)
-            .padding()
     }
 }

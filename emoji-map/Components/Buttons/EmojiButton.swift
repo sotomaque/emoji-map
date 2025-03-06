@@ -1,5 +1,6 @@
 import SwiftUI
 
+// MARK: EmojiButton
 struct EmojiButton: View {
     let emoji: String
     let isSelected: Bool
@@ -33,14 +34,21 @@ struct EmojiButton: View {
         )
         .overlay(
             Circle()
-                .stroke(isSelected ? Color.blue.opacity(isLoading ? 0.5 : 1.0) : Color.gray.opacity(0.3),
-                        lineWidth: isSelected ? 2 : 1.5)
+                .stroke(
+                    isSelected ? Color.blue
+                        .opacity(isLoading ? 0.5 : 1.0) : Color.gray
+                        .opacity(
+                            0.3
+                        ),
+                    lineWidth: isSelected ? 2 : 1.5
+                )
         )
         .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isLoading)
     }
 }
 
+// MARK: FavoritesButton
 struct FavoritesButton: View {
     let isSelected: Bool
     var isLoading: Bool = false
@@ -72,14 +80,21 @@ struct FavoritesButton: View {
         )
         .overlay(
             Circle()
-                .stroke(isSelected ? Color.yellow.opacity(isLoading ? 0.5 : 1.0) : Color.gray.opacity(0.3),
-                        lineWidth: isSelected ? 2 : 1.5)
+                .stroke(
+                    isSelected ? Color.yellow
+                        .opacity(isLoading ? 0.5 : 1.0) : Color.gray
+                        .opacity(
+                            0.3
+                        ),
+                    lineWidth: isSelected ? 2 : 1.5
+                )
         )
         .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isLoading)
     }
 }
 
+// MARK: AllCategoriesButton
 struct AllCategoriesButton: View {
     let isSelected: Bool
     var isLoading: Bool = false
@@ -111,21 +126,30 @@ struct AllCategoriesButton: View {
         )
         .overlay(
             Circle()
-                .stroke(isSelected ? Color.blue.opacity(isLoading ? 0.5 : 1.0) : Color.gray.opacity(0.3),
-                        lineWidth: isSelected ? 2 : 1.5)
+                .stroke(
+                    isSelected ? Color.blue
+                        .opacity(isLoading ? 0.5 : 1.0) : Color.gray
+                        .opacity(
+                            0.3
+                        ),
+                    lineWidth: isSelected ? 2 : 1.5
+                )
         )
         .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isLoading)
     }
 }
 
-#Preview {
-    HStack(spacing: 12) {
-        FavoritesButton(isSelected: true)
-        AllCategoriesButton(isSelected: false)
-        EmojiButton(emoji: "🍕", isSelected: true)
-        EmojiButton(emoji: "🏠", isSelected: false)
+// MARK: Preview
+struct EmojiButtonPreview: PreviewProvider {
+    static var previews: some View {
+        HStack(spacing: 12) {
+            FavoritesButton(isSelected: true)
+            AllCategoriesButton(isSelected: false)
+            EmojiButton(emoji: "🍕", isSelected: true)
+            EmojiButton(emoji: "🏠", isSelected: false)
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
     }
-    .padding()
-    .previewLayout(.sizeThatFits)
-} 
+}

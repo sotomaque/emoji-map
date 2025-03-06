@@ -55,40 +55,44 @@ struct PlaceAnnotation: View {
     }
 }
 
-#Preview {
-    VStack(spacing: 20) {
-        PlaceAnnotation(
-            emoji: "🍕",
-            isFavorite: true,
-            rating: 4,
-            isLoading: false,
-            onTap: {}
-        )
-        
-        PlaceAnnotation(
-            emoji: "🏠",
-            isFavorite: true,
-            rating: nil,
-            isLoading: false,
-            onTap: {}
-        )
-        
-        PlaceAnnotation(
-            emoji: "🚗",
-            isFavorite: false,
-            rating: nil,
-            isLoading: false,
-            onTap: {}
-        )
-        
-        PlaceAnnotation(
-            emoji: "🏫",
-            isFavorite: false,
-            rating: nil,
-            isLoading: true,
-            onTap: {}
-        )
+
+// MARK: Preview
+struct PlaceAnnotationPreview: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 20) {
+            PlaceAnnotation(
+                emoji: "🍕",
+                isFavorite: true,
+                rating: 4,
+                isLoading: false,
+                onTap: {}
+            )
+            
+            PlaceAnnotation(
+                emoji: "🏠",
+                isFavorite: true,
+                rating: nil,
+                isLoading: false,
+                onTap: {}
+            )
+            
+            PlaceAnnotation(
+                emoji: "🚗",
+                isFavorite: false,
+                rating: nil,
+                isLoading: false,
+                onTap: {}
+            )
+            
+            PlaceAnnotation(
+                emoji: "🏫",
+                isFavorite: false,
+                rating: nil,
+                isLoading: true,
+                onTap: {}
+            )
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
     }
-    .padding()
-    .background(Color.gray.opacity(0.2))
-} 
+}

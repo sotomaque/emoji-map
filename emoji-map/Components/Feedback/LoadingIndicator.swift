@@ -29,11 +29,12 @@ struct LoadingIndicator: View {
     }
 }
 
-#Preview {
-    ZStack {
-        Color.gray.opacity(0.3)
-            .edgesIgnoringSafeArea(.all)
-        
+// MARK: Preview
+struct LoadingIndicatorPreview: PreviewProvider {
+    static var previews: some View {
         LoadingIndicator(message: "Loading places...")
+            .padding()
+            .previewLayout(.sizeThatFits)
     }
-} 
+}
+

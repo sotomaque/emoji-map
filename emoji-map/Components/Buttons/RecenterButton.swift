@@ -14,20 +14,21 @@ struct RecenterButton: View {
                 .clipShape(Circle())
                 .shadow(radius: 4)
         }
-        .disabled(isLoading) // Disable during loading
-        .opacity(isLoading ? 0.6 : 1.0) // Fade during loading
+        .disabled(isLoading)
+        .opacity(isLoading ? 0.6 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isLoading)
     }
 }
 
-#Preview {
-    ZStack {
-        Color.gray.opacity(0.3)
-            .edgesIgnoringSafeArea(.all)
-        
+
+// MARK: Preview
+struct RecenterButtonPreview: PreviewProvider {
+    static var previews: some View {
         VStack(spacing: 20) {
             RecenterButton(isLoading: false, action: {})
             RecenterButton(isLoading: true, action: {})
         }
+        .padding()
+        .previewLayout(.sizeThatFits)
     }
-} 
+}

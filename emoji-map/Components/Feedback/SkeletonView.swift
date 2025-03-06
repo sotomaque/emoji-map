@@ -1,5 +1,6 @@
 import SwiftUI
 
+// MARK: SkeletonPhotoView
 struct SkeletonPhotoView: View {
     var height: CGFloat = 200
     var cornerRadius: CGFloat = 16
@@ -8,7 +9,13 @@ struct SkeletonPhotoView: View {
         Rectangle()
             .fill(
                 LinearGradient(
-                    gradient: Gradient(colors: [Color.gray.opacity(0.2), Color.gray.opacity(0.3), Color.gray.opacity(0.2)]),
+                    gradient: Gradient(
+                        colors: [
+                            Color.gray.opacity(0.2),
+                            Color.gray.opacity(0.3),
+                            Color.gray.opacity(0.2)
+                        ]
+                    ),
                     startPoint: .leading,
                     endPoint: .trailing
                 )
@@ -35,6 +42,7 @@ struct SkeletonPhotoView: View {
     }
 }
 
+// MARK: SkeletonReviewCard
 struct SkeletonReviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -77,11 +85,11 @@ struct SkeletonReviewCard: View {
         .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
-        .shimmering() 
+        .shimmering()
     }
 }
 
-// Renamed to avoid conflicts with PlaceDetailView implementation
+// MARK: SkeletonShimmerModifier
 struct SkeletonShimmerModifier: ViewModifier {
     @State private var phase: CGFloat = 0
     
@@ -90,40 +98,58 @@ struct SkeletonShimmerModifier: ViewModifier {
             .overlay(
                 GeometryReader { geometry in
                     LinearGradient(
-                        gradient: Gradient(stops: [
+                        gradient: Gradient(
+stops: [
                             .init(color: Color.clear, location: 0),
-                            .init(color: Color.white.opacity(0.5), location: 0.3),
-                            .init(color: Color.white.opacity(0.5), location: 0.7),
+                            .init(
+                                color: Color.white.opacity(0.5),
+                                location: 0.3
+                            ),
+                            .init(
+                                color: Color.white.opacity(0.5),
+                                location: 0.7
+                            ),
                             .init(color: Color.clear, location: 1),
-                        ]),
+]
+                        ),
                         startPoint: .leading,
                         endPoint: .trailing
                     )
                     .frame(width: geometry.size.width * 2)
-                    .offset(x: -geometry.size.width + (geometry.size.width * 2) * phase)
+                    .offset(
+                        x: -geometry.size
+                            .width + (geometry.size.width * 2) * phase
+                    )
                 }
             )
             .mask(content)
             .onAppear {
-                withAnimation(Animation.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                withAnimation(
+                    Animation
+                        .linear(duration: 1.5)
+                        .repeatForever(autoreverses: false)
+                ) {
                     phase = 1
                 }
             }
     }
 }
 
-// Renamed extension to avoid conflicts
 extension View {
     func shimmering() -> some View {
         modifier(SkeletonShimmerModifier())
     }
 }
 
-#Preview {
-    VStack(spacing: 20) {
-        SkeletonPhotoView()
-        
-        SkeletonReviewCard()
+// MARK: Preview
+struct SkeletonViewPreview: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 20) {
+            SkeletonPhotoView()
+            
+            SkeletonReviewCard()
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
     }
-    .padding()
-} 
+}

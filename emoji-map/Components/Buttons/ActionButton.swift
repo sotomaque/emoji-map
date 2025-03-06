@@ -25,31 +25,37 @@ struct ActionButton: View {
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(hasBorder ? foregroundColor : Color.clear, lineWidth: 1)
+                    .stroke(
+                        hasBorder ? foregroundColor : Color.clear,
+                        lineWidth: 1
+                    )
             )
         }
     }
 }
 
-#Preview {
-    VStack(spacing: 20) {
-        ActionButton(
-            title: "Add to Favorites",
-            icon: "star.fill",
-            foregroundColor: .white,
-            backgroundColor: .blue,
-            action: {}
-        )
-        
-        ActionButton(
-            title: "View on Map",
-            icon: "map.fill",
-            foregroundColor: .blue,
-            backgroundColor: Color.blue.opacity(0.1),
-            hasBorder: true,
-            action: {}
-        )
+// MARK: Preview
+struct ActionButtonPreview: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 20) {
+            ActionButton(
+                title: "Add to Favorites",
+                icon: "star.fill",
+                foregroundColor: .white,
+                backgroundColor: .blue,
+                action: {}
+            )
+            
+            ActionButton(
+                title: "View on Map",
+                icon: "map.fill",
+                foregroundColor: .blue,
+                backgroundColor: Color.blue.opacity(0.1),
+                hasBorder: true,
+                action: {}
+            )
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
     }
-    .padding()
-    .previewLayout(.sizeThatFits)
-} 
+}

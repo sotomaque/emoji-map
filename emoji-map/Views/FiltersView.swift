@@ -80,10 +80,11 @@ struct FiltersView: View {
                             Spacer()
                             
                             StarRatingView(
+                                rating: minimumRating,
                                 maxRating: 5,
-                                currentRating: minimumRating,
                                 size: 28,
                                 color: .yellow,
+                                isInteractive: true,
                                 onRatingChanged: { rating in
                                     minimumRating = rating
                                 }
@@ -188,4 +189,5 @@ struct FiltersView: View {
         minimumRating: 0
     )
     .environmentObject(MapViewModel(googlePlacesService: GooglePlacesService()))
+    .frame(height: 600)
 } 

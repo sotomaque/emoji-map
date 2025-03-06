@@ -27,16 +27,23 @@ struct ShuffleButton: View {
                 .stroke(Color.gray.opacity(0.2), lineWidth: 1)
         )
         .scaleEffect(isSelected ? 1.1 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
+        .animation(
+            .spring(response: 0.3, dampingFraction: 0.7),
+            value: isSelected
+        )
     }
 }
 
-#Preview {
-    HStack(spacing: 20) {
-        ShuffleButton(isSelected: false, isLoading: false)
-        ShuffleButton(isSelected: true, isLoading: false)
-        ShuffleButton(isSelected: false, isLoading: true)
+
+// MARK: Preview
+struct ShuffleButtonPreview: PreviewProvider {
+    static var previews: some View {
+        HStack(spacing: 20) {
+            ShuffleButton(isSelected: false, isLoading: false)
+            ShuffleButton(isSelected: true, isLoading: false)
+            ShuffleButton(isSelected: false, isLoading: true)
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
     }
-    .padding()
-    .previewLayout(.sizeThatFits)
-} 
+}

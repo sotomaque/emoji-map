@@ -17,7 +17,12 @@ struct SearchHereButton: View {
             .background(
                 Capsule()
                     .fill(Color.accentColor)
-                    .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    .shadow(
+                        color: Color.black.opacity(0.2),
+                        radius: 4,
+                        x: 0,
+                        y: 2
+                    )
             )
             .foregroundColor(.white)
         }
@@ -30,8 +35,11 @@ struct SearchHereButton: View {
     }
 }
 
-#Preview {
-    SearchHereButton(action: {})
-        .padding()
-        .previewLayout(.sizeThatFits)
-} 
+// MARK: Preview
+struct SearchHereButtonPreview: PreviewProvider {
+    static var previews: some View {
+        SearchHereButton(action: {})
+            .padding()
+            .previewLayout(.sizeThatFits)
+    }
+}

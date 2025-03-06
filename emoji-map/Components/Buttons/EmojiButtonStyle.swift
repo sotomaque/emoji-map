@@ -12,8 +12,14 @@ struct EmojiButtonStyle: ButtonStyle {
             )
     }
 }
-#Preview {
-    Button("Test Button") {}
-        .buttonStyle(EmojiButtonStyle())
-        .padding()
-} 
+
+
+// MARK: Preview
+struct EmojiButtonStylePreview: PreviewProvider {
+    static var previews: some View {
+        Button("Test Button") {}
+            .buttonStyle(EmojiButtonStyle())
+            .padding()
+            .previewLayout(.sizeThatFits)
+    }
+}
