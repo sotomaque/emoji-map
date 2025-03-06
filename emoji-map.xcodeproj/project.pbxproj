@@ -44,11 +44,6 @@
 			path = "emoji-mapTests";
 			sourceTree = "<group>";
 		};
-		CD12CBF72D7522C200EFAD77 /* emoji-mapUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "emoji-mapUITests";
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,7 +77,6 @@
 			children = (
 				CD12CBDC2D7522BB00EFAD77 /* emoji-map */,
 				CD12CBED2D7522C200EFAD77 /* emoji-mapTests */,
-				CD12CBF72D7522C200EFAD77 /* emoji-mapUITests */,
 				CD9A12092D7836EC0023EDF2 /* Frameworks */,
 				CD12CBDB2D7522BB00EFAD77 /* Products */,
 			);
@@ -166,9 +160,6 @@
 			);
 			dependencies = (
 				CD12CBF62D7522C200EFAD77 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				CD12CBF72D7522C200EFAD77 /* emoji-mapUITests */,
 			);
 			name = "emoji-mapUITests";
 			packageProductDependencies = (

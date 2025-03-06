@@ -1,0 +1,44 @@
+name: iOS Tests
+
+on:
+  pull_request: # Runs only when a merge request is open
+  push:
+    branches:
+      - main # Also runs on merges to main
+
+jobs:
+  test:
+    name: Run iOS Tests
+    runs-on: macos-14 # macOS 14 (Sonoma) for Xcode 16.2 compatibility
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.2" # Ensure compatibility with iOS 16 and SPM
+
+      - name: Resolve Swift Package Dependencies
+        run: xcodebuild -resolvePackageDependencies -project emoji-map.xcodeproj
+        # If using a workspace, replace with: xcodebuild -resolvePackageDependencies -workspace emoji-map.xcworkspace
+
+      - name: Build and test
+        run: |
+          xcodebuild test \
+            -project emoji-map.xcodeproj \
+            -scheme emoji-map \
+            -destination "platform=iOS Simulator,name=iPhone 16,OS=18.0" \
+            -resultBundlePath TestResults.xcresult
+        # If using a workspace, replace -project with: -workspace emoji-map.xcworkspace
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        if: always() # Upload results even if tests fail
+        with:
+          name: test-results
+          path: TestResults.xcresult
+          retention-days: 7
