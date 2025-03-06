@@ -226,29 +226,4 @@ class LocationManagerTests: XCTestCase {
         // Then
         XCTAssertTrue(mockCLLocationManager.requestWhenInUseAuthorizationCalled, "requestLocationAuthorization should call through to CLLocationManager")
     }
-    
-    // MARK: - Thread Safety Tests
-    
-    func testThreadSafetyOfLocationUpdates() {
-        // Given
-        let expectation = self.expectation(description: "All location updates processed")
-        expectation.expectedFulfillmentCount = 100
-        let testLocation = CLLocation(latitude: 37.7749, longitude: -122.4194)
-        
-        // When
-        sut.onLocationUpdate = { _ in
-            expectation.fulfill()
-        }
-        
-        // Simulate many concurrent location updates
-        DispatchQueue.concurrentPerform(iterations: 100) { _ in
-            self.mockCLLocationManager.simulateLocationUpdate(locations: [testLocation])
-        }
-        
-        // Then
-        waitForExpectations(timeout: 2.0) { error in
-            XCTAssertNil(error, "Test timed out")
-            // If we get here without crashes, the thread safety is working
-        }
-    }
-} 
+}

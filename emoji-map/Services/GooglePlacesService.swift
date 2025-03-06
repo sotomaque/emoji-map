@@ -19,6 +19,7 @@ enum NetworkError: Error {
     case networkConnectionError
     case requestCancelled
     case unknownError(Error)
+    case noResults(placeType: String)
     
     var localizedDescription: String {
         switch self {
@@ -38,6 +39,8 @@ enum NetworkError: Error {
             return "Request was cancelled."
         case .unknownError(let error):
             return "Unknown error: \(error.localizedDescription)"
+        case .noResults(let placeType):
+            return "No results found for \(placeType)"
         }
     }
     
@@ -51,7 +54,7 @@ enum NetworkError: Error {
     }
 }
 
-protocol GooglePlacesServiceProtocol {
+protocol GooglePlacesServiceProtocol: AnyObject {
     func fetchPlaces(
         center: CLLocationCoordinate2D,
         categories: [(emoji: String, name: String, type: String)],
@@ -84,6 +87,10 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
         }
         set {
             taskQueue.async {
+                // Cancel existing task before assigning a new one
+                if self._placesTask != nil && newValue != nil {
+                    self._placesTask?.cancel()
+                }
                 self._placesTask = newValue
             }
         }
@@ -98,9 +105,43 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
         }
         set {
             taskQueue.async {
+                // Cancel existing task before assigning a new one
+                if self._placeDetailsTask != nil && newValue != nil {
+                    self._placeDetailsTask?.cancel()
+                }
                 self._placeDetailsTask = newValue
             }
         }
+    }
+    
+    // Track active URLSession tasks for proper cancellation
+    private var activeURLSessionTasks: [URLSessionTask] = []
+    private let sessionTasksLock = NSLock()
+    
+    private func addSessionTask(_ task: URLSessionTask) {
+        sessionTasksLock.lock()
+        defer { sessionTasksLock.unlock() }
+        activeURLSessionTasks.append(task)
+    }
+    
+    private func removeSessionTask(_ task: URLSessionTask) {
+        sessionTasksLock.lock()
+        defer { sessionTasksLock.unlock() }
+        activeURLSessionTasks.removeAll { $0 === task }
+    }
+    
+    private func cancelAllSessionTasks() {
+        sessionTasksLock.lock()
+        let tasks = activeURLSessionTasks
+        sessionTasksLock.unlock()
+        
+        for task in tasks {
+            task.cancel()
+        }
+        
+        sessionTasksLock.lock()
+        activeURLSessionTasks.removeAll()
+        sessionTasksLock.unlock()
     }
     
     // Helper method to create properly encoded URLs
@@ -129,143 +170,195 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
         }
         
         // Create a new task for this request
-        placesTask = Task {
-            var allPlaces: [Place] = []
-            var encounteredError: NetworkError? = nil
+        placesTask = Task { [weak self] in
+            guard let self = self else {
+                completion(.failure(.requestCancelled))
+                return
+            }
             
-            for (_, category, placeType) in categories {
-                // Check if task was cancelled
-                if Task.isCancelled {
-                    completion(.failure(.requestCancelled))
-                    return
+            // Capture completion handler weakly to avoid retain cycles
+            let weakCompletion: (Result<[Place], NetworkError>) -> Void = { [weak self] result in
+                // Only call completion if self still exists
+                guard self != nil else { return }
+                completion(result)
+            }
+            
+            // Use an actor to ensure thread-safe access to shared state
+            actor FetchState {
+                var allPlaces: [Place] = []
+                var errors: [NetworkError] = []
+                
+                func addPlaces(_ places: [Place]) {
+                    allPlaces.append(contentsOf: places)
                 }
                 
-                // Skip if we already encountered an error
-                if encounteredError != nil {
-                    break
+                func addError(_ error: NetworkError) {
+                    errors.append(error)
                 }
                 
-                let baseURL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-                let location = "\(center.latitude),\(center.longitude)"
-                
-                // Create properly encoded URL using helper method
-                let parameters: [String: String] = [
-                    "location": location,
-                    "radius": "5000", // 5km radius
-                    "type": placeType,
-                    "keyword": category,
-                    "key": apiKey,
-                    "opennow": showOpenNowOnly ? "true" : nil // Add open now parameter if filter is enabled
-                ].compactMapValues { $0 } // Remove nil values
-                
-                guard let url = createURL(baseURL: baseURL, parameters: parameters) else {
-                    encounteredError = .invalidURL
-                    break
+                func getResult() -> Result<[Place], NetworkError> {
+                    if !errors.isEmpty {
+                        // Return the first error if any occurred
+                        return .failure(errors.first!)
+                    } else {
+                        return .success(allPlaces)
+                    }
                 }
-                
-                do {
-                    // Check if task was cancelled before making the request
-                    if Task.isCancelled {
-                        completion(.failure(.requestCancelled))
-                        return
-                    }
-                    
-                    let (data, response) = try await URLSession.shared.data(from: url)
-                    
-                    // Check if task was cancelled after receiving the response
-                    if Task.isCancelled {
-                        completion(.failure(.requestCancelled))
-                        return
-                    }
-                    
-                    // Check HTTP status code
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        encounteredError = .unknownError(NSError(domain: "HTTPResponse", code: 0, userInfo: nil))
-                        break
-                    }
-                    
-                    // Handle HTTP errors
-                    guard (200...299).contains(httpResponse.statusCode) else {
-                        encounteredError = .serverError(statusCode: httpResponse.statusCode)
-                        break
-                    }
-                    
-                    // Check for empty data
-                    guard !data.isEmpty else {
-                        encounteredError = .noData
-                        break
-                    }
-                    
-                    do {
-                        let response = try JSONDecoder().decode(GooglePlacesResponse.self, from: data)
-                        
-                        // Check if API returned an error
-                        if let status = response.status, status != "OK" {
-                            let errorMessage = response.error_message ?? "Unknown API error"
-                            encounteredError = .apiError(message: "\(status): \(errorMessage)")
-                            break
+            }
+            
+            let fetchState = FetchState()
+            
+            // Group categories by type to reduce API calls
+            let categoriesByType = Dictionary(grouping: categories) { $0.type }
+            
+            await withTaskGroup(of: Void.self) { group in
+                for (placeType, categoriesOfType) in categoriesByType {
+                    group.addTask {
+                        // Check if task was cancelled
+                        if Task.isCancelled {
+                            return
                         }
                         
-                        let categoryPlaces = response.results.map { result in
-                            Place(
-                                placeId: result.place_id, 
-                                name: result.name,
-                                coordinate: CLLocationCoordinate2D(
-                                    latitude: result.geometry.location.lat,
-                                    longitude: result.geometry.location.lng
-                                ),
-                                category: category,
-                                description: result.vicinity,
-                                priceLevel: result.price_level,
-                                openNow: result.opening_hours?.open_now,
-                                rating: result.rating
-                            )
+                        let baseURL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+                        let location = "\(center.latitude),\(center.longitude)"
+                        
+                        // Create a comma-separated list of keywords for this type
+                        let keywordList = categoriesOfType.map { $0.name }.joined(separator: ",")
+                        
+                        // Create properly encoded URL using helper method
+                        let parameters: [String: String] = [
+                            "location": location,
+                            "radius": "5000", // 5km radius
+                            "type": placeType,
+                            "keyword": keywordList,
+                            "key": self.apiKey,
+                            "opennow": showOpenNowOnly ? "true" : nil // Add open now parameter if filter is enabled
+                        ].compactMapValues { $0 } // Remove nil values
+                        
+                        guard let url = self.createURL(baseURL: baseURL, parameters: parameters) else {
+                            await fetchState.addError(.invalidURL)
+                            return
                         }
-                        allPlaces.append(contentsOf: categoryPlaces)
-                    } catch {
-                        encounteredError = .decodingError
-                        print("Decoding error: \(error)")
-                        break
+                        
+                        do {
+                            // Create and track the URLSession task
+                            let urlSession = URLSession.shared
+                            let task = urlSession.dataTask(with: url) { _, _, _ in }
+                            self.addSessionTask(task)
+                            
+                            // Start the task and wait for completion
+                            let (data, response) = try await withTaskCancellationHandler {
+                                try await urlSession.data(from: url)
+                            } onCancel: {
+                                task.cancel()
+                            }
+                            
+                            // Remove the task from tracking once completed
+                            self.removeSessionTask(task)
+                            
+                            // Check HTTP response
+                            guard let httpResponse = response as? HTTPURLResponse else {
+                                await fetchState.addError(.networkConnectionError)
+                                return
+                            }
+                            
+                            // Check for HTTP errors
+                            if httpResponse.statusCode != 200 {
+                                await fetchState.addError(.serverError(statusCode: httpResponse.statusCode))
+                                return
+                            }
+                            
+                            do {
+                                let response = try JSONDecoder().decode(GooglePlacesResponse.self, from: data)
+                                
+                                // Check if API returned an error or zero results
+                                if let status = response.status {
+                                    if status == "ZERO_RESULTS" {
+                                        // Handle zero results as a specific case
+                                        await fetchState.addError(.noResults(placeType: placeType))
+                                        return
+                                    } else if status != "OK" {
+                                        let errorMessage = response.error_message ?? "Unknown API error"
+                                        await fetchState.addError(.apiError(message: "\(status): \(errorMessage)"))
+                                        return
+                                    }
+                                }
+                                
+                                // Process results and assign to appropriate categories
+                                for result in response.results {
+                                    // Find the best matching category for this result
+                                    let matchingCategories = categoriesOfType.filter { category in
+                                        // Check if the place name or vicinity contains the category keyword
+                                        let name = result.name.lowercased()
+                                        let vicinity = result.vicinity.lowercased()
+                                        let keyword = category.name.lowercased()
+                                        
+                                        return name.contains(keyword) || vicinity.contains(keyword)
+                                    }
+                                    
+                                    // Use the first matching category or default to the first category of this type
+                                    let category = matchingCategories.first?.name ?? categoriesOfType.first!.name
+                                    
+                                    let place = Place(
+                                        placeId: result.place_id, 
+                                        name: result.name,
+                                        coordinate: CLLocationCoordinate2D(
+                                            latitude: result.geometry.location.lat,
+                                            longitude: result.geometry.location.lng
+                                        ),
+                                        category: category,
+                                        description: result.vicinity,
+                                        priceLevel: result.price_level,
+                                        openNow: result.opening_hours?.open_now,
+                                        rating: result.rating
+                                    )
+                                    
+                                    await fetchState.addPlaces([place])
+                                }
+                            } catch {
+                                await fetchState.addError(.decodingError)
+                                print("Decoding error for \(placeType): \(error)")
+                            }
+                        } catch let urlError as URLError {
+                            // Check if the error is due to cancellation
+                            if urlError.code == .cancelled {
+                                return
+                            }
+                            
+                            // Handle specific URL session errors
+                            switch urlError.code {
+                            case .notConnectedToInternet, .networkConnectionLost:
+                                await fetchState.addError(.networkConnectionError)
+                            default:
+                                await fetchState.addError(.unknownError(urlError))
+                            }
+                            print("Network error fetching \(placeType) places: \(urlError)")
+                        } catch {
+                            await fetchState.addError(.unknownError(error))
+                            print("Unknown error fetching \(placeType) places: \(error)")
+                        }
                     }
-                } catch let urlError as URLError {
-                    // Check if the error is due to cancellation
-                    if urlError.code == .cancelled {
-                        completion(.failure(.requestCancelled))
-                        return
-                    }
-                    
-                    // Handle specific URL session errors
-                    switch urlError.code {
-                    case .notConnectedToInternet, .networkConnectionLost:
-                        encounteredError = .networkConnectionError
-                    default:
-                        encounteredError = .unknownError(urlError)
-                    }
-                    print("Network error fetching \(category) places: \(urlError)")
-                    break
-                } catch {
-                    encounteredError = .unknownError(error)
-                    print("Unknown error fetching \(category) places: \(error)")
-                    break
                 }
             }
             
             // Check if task was cancelled before returning results
             if Task.isCancelled {
-                completion(.failure(.requestCancelled))
+                weakCompletion(.failure(.requestCancelled))
                 return
             }
             
-            // Apply open now filter if enabled
-            if showOpenNowOnly {
-                allPlaces = allPlaces.filter { $0.openNow == true }
-            }
+            // Get the final result from our thread-safe state
+            let result = await fetchState.getResult()
             
-            // Return results or error
-            if let error = encounteredError {
-                completion(.failure(error))
+            // Apply any additional filtering if needed
+            if case .success(var places) = result {
+                // Apply open now filter if enabled (redundant if already filtered in API call)
+                if showOpenNowOnly {
+                    places = places.filter { $0.openNow == true }
+                }
+                weakCompletion(.success(places))
             } else {
-                completion(.success(allPlaces))
+                weakCompletion(result)
             }
         }
     }
@@ -281,7 +374,19 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
         }
         
         // Create a new task for this request
-        placeDetailsTask = Task {
+        placeDetailsTask = Task { [weak self] in
+            guard let self = self else {
+                completion(.failure(.requestCancelled))
+                return
+            }
+            
+            // Capture completion handler weakly to avoid retain cycles
+            let weakCompletion: (Result<PlaceDetails, NetworkError>) -> Void = { [weak self] result in
+                // Only call completion if self still exists
+                guard self != nil else { return }
+                completion(result)
+            }
+            
             let baseURL = "https://maps.googleapis.com/maps/api/place/details/json"
             
             // Create properly encoded URL using helper method
@@ -292,40 +397,53 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
             ]
             
             guard let url = createURL(baseURL: baseURL, parameters: parameters) else {
-                completion(.failure(.invalidURL))
+                weakCompletion(.failure(.invalidURL))
                 return
             }
             
             do {
                 // Check if task was cancelled before making the request
                 if Task.isCancelled {
-                    completion(.failure(.requestCancelled))
+                    weakCompletion(.failure(.requestCancelled))
                     return
                 }
                 
-                let (data, response) = try await URLSession.shared.data(from: url)
+                // Create and track the URLSession task
+                let urlSession = URLSession.shared
+                let task = urlSession.dataTask(with: url) { _, _, _ in }
+                self.addSessionTask(task)
+                
+                // Start the task and wait for completion
+                let (data, response) = try await withTaskCancellationHandler {
+                    try await urlSession.data(from: url)
+                } onCancel: {
+                    task.cancel()
+                }
+                
+                // Remove the task from tracking once completed
+                self.removeSessionTask(task)
                 
                 // Check if task was cancelled after receiving the response
                 if Task.isCancelled {
-                    completion(.failure(.requestCancelled))
+                    weakCompletion(.failure(.requestCancelled))
                     return
                 }
                 
                 // Check HTTP status code
                 guard let httpResponse = response as? HTTPURLResponse else {
-                    completion(.failure(.unknownError(NSError(domain: "HTTPResponse", code: 0, userInfo: nil))))
+                    weakCompletion(.failure(.unknownError(NSError(domain: "HTTPResponse", code: 0, userInfo: nil))))
                     return
                 }
                 
                 // Handle HTTP errors
                 guard (200...299).contains(httpResponse.statusCode) else {
-                    completion(.failure(.serverError(statusCode: httpResponse.statusCode)))
+                    weakCompletion(.failure(.serverError(statusCode: httpResponse.statusCode)))
                     return
                 }
                 
                 // Check for empty data
                 guard !data.isEmpty else {
-                    completion(.failure(.noData))
+                    weakCompletion(.failure(.noData))
                     return
                 }
                 
@@ -333,10 +451,16 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
                     let response = try JSONDecoder().decode(PlaceDetailsResponse.self, from: data)
                     
                     // Check if API returned an error
-                    if let status = response.status, status != "OK" {
-                        let errorMessage = response.error_message ?? "Unknown API error"
-                        completion(.failure(.apiError(message: "\(status): \(errorMessage)")))
-                        return
+                    if let status = response.status {
+                        if status == "ZERO_RESULTS" {
+                            // Handle zero results as a specific case
+                            weakCompletion(.failure(.noResults(placeType: "details")))
+                            return
+                        } else if status != "OK" {
+                            let errorMessage = response.error_message ?? "Unknown API error"
+                            weakCompletion(.failure(.apiError(message: "\(status): \(errorMessage)")))
+                            return
+                        }
                     }
                     
                     // Create properly encoded photo URLs
@@ -344,124 +468,94 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
                         let photoParameters: [String: String] = [
                             "maxwidth": "400",
                             "photoreference": photo.photo_reference,
-                            "key": apiKey
+                            "key": self.apiKey
                         ]
-                        return createURL(baseURL: "https://maps.googleapis.com/maps/api/place/photo", parameters: photoParameters)?.absoluteString
+                        return self.createURL(baseURL: "https://maps.googleapis.com/maps/api/place/photo", parameters: photoParameters)?.absoluteString
                     } ?? []
                     
                     let details = PlaceDetails(
                         photos: photos,
                         reviews: response.result.reviews?.map { ($0.author_name, $0.text, $0.rating) } ?? []
                     )
-                    completion(.success(details))
+                    weakCompletion(.success(details))
                 } catch {
-                    completion(.failure(.decodingError))
+                    weakCompletion(.failure(.decodingError))
                     print("Decoding error: \(error)")
                 }
             } catch let urlError as URLError {
                 // Check if the error is due to cancellation
                 if urlError.code == .cancelled {
-                    completion(.failure(.requestCancelled))
+                    weakCompletion(.failure(.requestCancelled))
                     return
                 }
                 
                 // Handle specific URL session errors
                 switch urlError.code {
                 case .notConnectedToInternet, .networkConnectionLost:
-                    completion(.failure(.networkConnectionError))
+                    weakCompletion(.failure(.networkConnectionError))
                 default:
-                    completion(.failure(.unknownError(urlError)))
+                    weakCompletion(.failure(.unknownError(urlError)))
                 }
                 print("Network error fetching place details: \(urlError)")
             } catch {
-                completion(.failure(.unknownError(error)))
+                weakCompletion(.failure(.unknownError(error)))
                 print("Unknown error fetching place details: \(error)")
             }
         }
     }
     
     func cancelAllRequests() {
+        // Cancel all tasks
         cancelPlacesRequests()
         cancelPlaceDetailsRequests()
+        
+        // Cancel all URLSession tasks
+        cancelAllSessionTasks()
+        
+        // Log for debugging
+        print("All requests cancelled")
     }
     
     func cancelPlacesRequests() {
-        taskQueue.async {
+        // Use sync to ensure the task is cancelled before returning
+        taskQueue.sync {
+            // Cancel the task if it exists
             self._placesTask?.cancel()
+            // Clear the reference
             self._placesTask = nil
         }
+        
+        // Log for debugging
+        print("Places requests cancelled")
     }
     
     func cancelPlaceDetailsRequests() {
-        taskQueue.async {
+        // Use sync to ensure the task is cancelled before returning
+        taskQueue.sync {
+            // Cancel the task if it exists
             self._placeDetailsTask?.cancel()
+            // Clear the reference
             self._placeDetailsTask = nil
         }
-    }
-}
-
-// MARK: - Mock Google Places Service
-class MockGooglePlacesService: GooglePlacesServiceProtocol {
-    var mockPlaces: [Place]?
-    var mockDetails: PlaceDetails?
-    
-    private let defaultMockPlaces: [Place] = [
-        Place(placeId: "mock1", name: "Pizza Place", coordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194), category: "pizza", description: "123 Pizza St", priceLevel: 2, openNow: true, rating: 4.5),
-        Place(placeId: "mock2", name: "Beer Bar", coordinate: CLLocationCoordinate2D(latitude: 37.7750, longitude: -122.4180), category: "beer", description: "456 Beer Ave", priceLevel: 3, openNow: true, rating: 4.2),
-        Place(placeId: "mock3", name: "Sushi Spot", coordinate: CLLocationCoordinate2D(latitude: 37.7760, longitude: -122.4170), category: "sushi", description: "789 Sushi Blvd", priceLevel: 4, openNow: false, rating: 4.8),
-        Place(placeId: "mock4", name: "Coffee Shop", coordinate: CLLocationCoordinate2D(latitude: 37.7770, longitude: -122.4160), category: "coffee", description: "101 Coffee Rd", priceLevel: 1, openNow: true, rating: 3.9),
-        Place(placeId: "mock5", name: "Burger Joint", coordinate: CLLocationCoordinate2D(latitude: 37.7780, longitude: -122.4150), category: "burger", description: "202 Burger Ln", priceLevel: 2, openNow: false, rating: 4.0)
-    ]
-    
-    // Create properly encoded URLs for mock photos
-    private let defaultMockDetails = PlaceDetails(
-        photos: [
-            URL(string: "https://via.placeholder.com/300x200.png?text=Photo+1")?.absoluteString ?? "",
-            URL(string: "https://via.placeholder.com/300x200.png?text=Photo+2")?.absoluteString ?? "",
-            URL(string: "https://via.placeholder.com/300x200.png?text=Photo+3")?.absoluteString ?? ""
-        ],
-        reviews: [
-            ("John Doe", "Great food and atmosphere!", 5),
-            ("Jane Smith", "Service was slow, but food was decent.", 3),
-            ("Alex Brown", "Loved the sushi!", 4)
-        ]
-    )
-    
-    init(mockPlaces: [Place]? = nil, mockDetails: PlaceDetails? = nil) {
-        self.mockPlaces = mockPlaces
-        self.mockDetails = mockDetails
+        
+        // Log for debugging
+        print("Place details requests cancelled")
     }
     
-    func fetchPlaces(center: CLLocationCoordinate2D, categories: [(emoji: String, name: String, type: String)], showOpenNowOnly: Bool = false, completion: @escaping (Result<[Place], NetworkError>) -> Void) {
-        DispatchQueue.main.async {
-            var places = self.mockPlaces ?? self.defaultMockPlaces.filter { place in
-                categories.contains { $0.name == place.category }
-            }
-            
-            // Apply open now filter if enabled
-            if showOpenNowOnly {
-                places = places.filter { $0.openNow == true }
-            }
-            
-            completion(.success(places))
+    deinit {
+        // Log for debugging first, in case the other operations fail
+        print("GooglePlacesService deinit called")
+        
+        // Cancel all tasks and requests
+        cancelAllRequests()
+        
+        // Ensure all URLSession tasks are cancelled
+        cancelAllSessionTasks()
+        
+        // Clear any references - use sync to ensure it completes before deinit finishes
+        taskQueue.sync {
+            self._placesTask = nil
+            self._placeDetailsTask = nil
         }
-    }
-    
-    func fetchPlaceDetails(placeId: String, completion: @escaping (Result<PlaceDetails, NetworkError>) -> Void) {
-        DispatchQueue.main.async {
-            completion(.success(self.mockDetails ?? self.defaultMockDetails))
-        }
-    }
-    
-    func cancelAllRequests() {
-        // No-op for mock service
-    }
-    
-    func cancelPlacesRequests() {
-        // No-op for mock service
-    }
-    
-    func cancelPlaceDetailsRequests() {
-        // No-op for mock service
     }
 }

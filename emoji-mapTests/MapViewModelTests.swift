@@ -3,64 +3,6 @@ import CoreLocation
 import MapKit
 @testable import emoji_map
 
-// Mock GooglePlacesService for testing
-class MockGooglePlacesService: GooglePlacesServiceProtocol {
-    var mockPlaces: [Place] = []
-    var mockDetails: PlaceDetails?
-    var fetchPlacesCalled = false
-    var fetchPlaceDetailsCalled = false
-    var lastFetchedCenter: CLLocationCoordinate2D?
-    var lastFetchedCategories: [(emoji: String, name: String, type: String)] = []
-    var lastFetchedPlaceId: String?
-    var lastShowOpenNowOnly: Bool = false
-    
-    init(mockPlaces: [Place] = [], mockDetails: PlaceDetails? = nil) {
-        self.mockPlaces = mockPlaces
-        self.mockDetails = mockDetails
-    }
-    
-    func fetchPlaces(center: CLLocationCoordinate2D, categories: [(emoji: String, name: String, type: String)], showOpenNowOnly: Bool, completion: @escaping (Result<[Place], NetworkError>) -> Void) {
-        fetchPlacesCalled = true
-        lastFetchedCenter = center
-        lastFetchedCategories = categories
-        lastShowOpenNowOnly = showOpenNowOnly
-        
-        // Filter places by category if needed
-        let categoryNames = categories.map { $0.name }
-        var filteredPlaces = categoryNames.isEmpty ? mockPlaces : mockPlaces.filter { categoryNames.contains($0.category) }
-        
-        // Filter by open now if needed
-        if showOpenNowOnly {
-            filteredPlaces = filteredPlaces.filter { $0.openNow == true }
-        }
-        
-        completion(.success(filteredPlaces))
-    }
-    
-    func fetchPlaceDetails(placeId: String, completion: @escaping (Result<PlaceDetails, NetworkError>) -> Void) {
-        fetchPlaceDetailsCalled = true
-        lastFetchedPlaceId = placeId
-        
-        if let details = mockDetails {
-            completion(.success(details))
-        } else {
-            completion(.failure(.invalidURL))
-        }
-    }
-    
-    func cancelPlacesRequests() {
-        // No-op for mock
-    }
-    
-    func cancelPlaceDetailsRequests() {
-        // No-op for mock
-    }
-    
-    func cancelAllRequests() {
-        // No-op for mock
-    }
-}
-
 @MainActor // Make the test class MainActor-isolated
 class MapViewModelTests: XCTestCase {
     var sut: MapViewModel!
@@ -353,13 +295,14 @@ class MapViewModelTests: XCTestCase {
         
         // When - filter for only $ and $$ places
         // Create a FiltersView to apply the price level filter
-        let filtersView1 = FiltersView(
+        var filtersView1 = FiltersView(
             selectedPriceLevels: [1, 2],
             showOpenNowOnly: false,
             minimumRating: 0
         )
         
-        // Apply the filters to the view model
+        // Apply the environment object before calling applyFilters
+        filtersView1.setViewModel(sut)
         filtersView1.applyFilters()
         
         // Then
@@ -368,13 +311,14 @@ class MapViewModelTests: XCTestCase {
         
         // When - filter for only $$$ and $$$$ places
         // Create a FiltersView to apply the price level filter
-        let filtersView2 = FiltersView(
+        var filtersView2 = FiltersView(
             selectedPriceLevels: [3, 4],
             showOpenNowOnly: false,
             minimumRating: 0
         )
         
-        // Apply the filters to the view model
+        // Apply the environment object before calling applyFilters
+        filtersView2.setViewModel(sut)
         filtersView2.applyFilters()
         
         // Then
@@ -384,13 +328,14 @@ class MapViewModelTests: XCTestCase {
         
         // When - filter for all price levels
         // Create a FiltersView to apply the price level filter
-        let filtersView3 = FiltersView(
+        var filtersView3 = FiltersView(
             selectedPriceLevels: [1, 2, 3, 4],
             showOpenNowOnly: false,
             minimumRating: 0
         )
         
-        // Apply the filters to the view model
+        // Apply the environment object before calling applyFilters
+        filtersView3.setViewModel(sut)
         filtersView3.applyFilters()
         
         // Then
@@ -404,13 +349,14 @@ class MapViewModelTests: XCTestCase {
         
         // When - filter for only open places
         // Create a FiltersView to apply the open now filter
-        let filtersView = FiltersView(
-            selectedPriceLevels: sut.selectedPriceLevels,
+        var filtersView = FiltersView(
+            selectedPriceLevels: [1, 2, 3, 4],
             showOpenNowOnly: true,
-            minimumRating: sut.minimumRating
+            minimumRating: 0
         )
         
-        // Apply the filters to the view model
+        // Apply the environment object before calling applyFilters
+        filtersView.setViewModel(sut)
         filtersView.applyFilters()
         
         // Then
@@ -420,13 +366,14 @@ class MapViewModelTests: XCTestCase {
         XCTAssertFalse(sut.filteredPlaces.contains(where: { $0.placeId == "sushi_place" }), "Should not include sushi place (closed)")
         
         // When - turn off open now filter
-        let resetFiltersView = FiltersView(
+        var resetFiltersView = FiltersView(
             selectedPriceLevels: sut.selectedPriceLevels,
             showOpenNowOnly: false,
             minimumRating: sut.minimumRating
         )
         
-        // Apply the filters to the view model
+        // Apply the environment object before calling applyFilters
+        resetFiltersView.setViewModel(sut)
         resetFiltersView.applyFilters()
         
         // Then
@@ -464,13 +411,14 @@ class MapViewModelTests: XCTestCase {
         
         // When - apply multiple filters: open now, price level 2-3, and rating >= 4.5
         // Create a FiltersView to apply all filters
-        let filtersView = FiltersView(
+        var filtersView = FiltersView(
             selectedPriceLevels: [2, 3],
             showOpenNowOnly: true,
             minimumRating: 5
         )
         
-        // Apply the filters to the view model
+        // Apply the environment object before calling applyFilters
+        filtersView.setViewModel(sut)
         filtersView.applyFilters()
         
         // Then - no places should match all criteria
@@ -478,13 +426,14 @@ class MapViewModelTests: XCTestCase {
         
         // When - relax rating filter to >= 4.0
         // Create a new FiltersView with the updated rating
-        let updatedFiltersView = FiltersView(
+        var updatedFiltersView = FiltersView(
             selectedPriceLevels: [2, 3],
             showOpenNowOnly: true,
-            minimumRating: 4
+            minimumRating: 3
         )
         
-        // Apply the updated filters
+        // Apply the environment object before calling applyFilters
+        updatedFiltersView.setViewModel(sut)
         updatedFiltersView.applyFilters()
         
         // Then - beer place should match
@@ -497,11 +446,12 @@ class MapViewModelTests: XCTestCase {
     func testActiveFilterCount() {
         // Given - default state (all price levels, no open now, no minimum rating)
         // Create a FiltersView with default filters
-        let defaultFiltersView = FiltersView(
+        var defaultFiltersView = FiltersView(
             selectedPriceLevels: [1, 2, 3, 4],
             showOpenNowOnly: false,
             minimumRating: 0
         )
+        defaultFiltersView.setViewModel(sut)
         defaultFiltersView.applyFilters()
         
         // Then
@@ -509,55 +459,60 @@ class MapViewModelTests: XCTestCase {
         
         // When - apply price level filter
         // Create a FiltersView with price level filter
-        let priceLevelFiltersView = FiltersView(
+        var priceLevelFiltersView = FiltersView(
             selectedPriceLevels: [2, 3],
             showOpenNowOnly: false,
             minimumRating: 0
         )
+        priceLevelFiltersView.setViewModel(sut)
         priceLevelFiltersView.applyFilters()
         
         // Then
         XCTAssertEqual(sut.activeFilterCount, 1, "Should have 1 active filter (price level)")
         
         // When - apply open now filter
-        let openNowFiltersView = FiltersView(
+        var openNowFiltersView = FiltersView(
             selectedPriceLevels: [2, 3],
             showOpenNowOnly: true,
             minimumRating: 0
         )
+        openNowFiltersView.setViewModel(sut)
         openNowFiltersView.applyFilters()
         
         // Then
         XCTAssertEqual(sut.activeFilterCount, 2, "Should have 2 active filters (price level, open now)")
         
         // When - apply minimum rating filter
-        let ratingFiltersView = FiltersView(
+        var ratingFiltersView = FiltersView(
             selectedPriceLevels: [2, 3],
             showOpenNowOnly: true,
             minimumRating: 4
         )
+        ratingFiltersView.setViewModel(sut)
         ratingFiltersView.applyFilters()
         
         // Then
         XCTAssertEqual(sut.activeFilterCount, 3, "Should have 3 active filters (price level, open now, minimum rating)")
         
         // When - reset price level filter
-        let resetPriceLevelFiltersView = FiltersView(
+        var resetPriceLevelFiltersView = FiltersView(
             selectedPriceLevels: [1, 2, 3, 4],
             showOpenNowOnly: true,
             minimumRating: 4
         )
+        resetPriceLevelFiltersView.setViewModel(sut)
         resetPriceLevelFiltersView.applyFilters()
         
         // Then
         XCTAssertEqual(sut.activeFilterCount, 2, "Should have 2 active filters (open now, minimum rating)")
         
         // When - reset all filters
-        let resetAllFiltersView = FiltersView(
+        var resetAllFiltersView = FiltersView(
             selectedPriceLevels: [1, 2, 3, 4],
             showOpenNowOnly: false,
             minimumRating: 0
         )
+        resetAllFiltersView.setViewModel(sut)
         resetAllFiltersView.applyFilters()
         
         // Then

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UIKit
 
 // Thread-safe actor for managing shared state
 @MainActor
@@ -23,13 +24,25 @@ class PlaceDetailViewModel: ObservableObject {
         return reviews.map { Review(authorName: $0.0, text: $0.1, rating: $0.2) }
     }
     
-    private let service: GooglePlacesServiceProtocol
     private let userPreferences: UserPreferences
     var currentPlaceId: String?
     
-    init(service: GooglePlacesServiceProtocol = GooglePlacesService(), userPreferences: UserPreferences = UserPreferences()) {
-        self.service = service
-        self.userPreferences = userPreferences
+    // Make service a private variable instead of a constant so we can update it
+    private var service: GooglePlacesServiceProtocol
+    
+    init(service: GooglePlacesServiceProtocol? = nil, userPreferences: UserPreferences? = nil) {
+        // Use the provided service or get the shared instance
+        self.service = service ?? ServiceContainer.shared.googlePlacesService
+        // Use the provided userPreferences or get the shared instance
+        self.userPreferences = userPreferences ?? ServiceContainer.shared.userPreferences
+    }
+    
+    // Method to update the service after initialization - no longer needed but kept for compatibility
+    func updateService(_ newService: GooglePlacesServiceProtocol) {
+        // Cancel any pending requests on the old service
+        self.service.cancelAllRequests()
+        // Update to the new service
+        self.service = newService
     }
     
     func fetchDetails(for place: Place) {
@@ -60,6 +73,15 @@ class PlaceDetailViewModel: ObservableObject {
                     self.reviews = details.reviews
                 case .failure(let networkError):
                     self.error = networkError
+                    
+                    // Handle specific error types
+                    if case .noResults = networkError {
+                        // Provide haptic feedback for no results
+                        let feedbackGenerator = UINotificationFeedbackGenerator()
+                        feedbackGenerator.prepare()
+                        feedbackGenerator.notificationOccurred(.warning)
+                    }
+                    
                     // Only show error alert if it's not a cancelled request
                     self.showError = networkError.shouldShowAlert
                     print("Error fetching place details: \(networkError.localizedDescription)")
@@ -73,30 +95,45 @@ class PlaceDetailViewModel: ObservableObject {
         
         if isFavorite {
             userPreferences.removeFavorite(placeId: placeId)
+            isFavorite = false
         } else {
-            // We need the full place object to add as favorite
-            // This is a limitation of our current implementation
-            // In a real app, we might store the current place or fetch it again
-            print("Cannot add to favorites without full place object")
-            // For now, we'll just toggle the UI state
+            // We can't add to favorites without the full place object
+            // This method should not be called directly - use setFavorite instead
+            print("Warning: Cannot add to favorites without full place object. Use setFavorite instead.")
+            // Don't change the isFavorite state since we couldn't actually add it
         }
         
-        isFavorite.toggle()
+        // Notify UI of change
+        objectWillChange.send()
     }
     
     func setFavorite(_ place: Place, isFavorite: Bool) {
+        print("PlaceDetailViewModel.setFavorite called for \(place.name), setting to \(isFavorite)")
+        
         if isFavorite {
             userPreferences.addFavorite(place)
         } else {
             userPreferences.removeFavorite(placeId: place.placeId)
         }
+        
+        // Update the local state
         self.isFavorite = isFavorite
+        
+        // Debug: Print favorites after change
+        print("After setting favorite in PlaceDetailViewModel:")
+        userPreferences.printFavorites()
+        
+        // Notify UI of change
+        objectWillChange.send()
     }
     
     func ratePlace(rating: Int) {
         guard let placeId = currentPlaceId else { return }
         userPreferences.ratePlace(placeId: placeId, rating: rating)
         userRating = rating
+        
+        // Notify UI of change
+        objectWillChange.send()
     }
     
     func retryFetchDetails(for place: Place) {

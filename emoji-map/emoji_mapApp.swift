@@ -7,18 +7,27 @@
 
 import SwiftUI
 
+// Service container to hold shared service instances
+class ServiceContainer {
+    static let shared = ServiceContainer()
+    
+    let userPreferences = UserPreferences()
+    let googlePlacesService = GooglePlacesService()
+    
+    private init() {} // Singleton
+}
+
 @main
 struct emoji_mapApp: App {
-    // Create shared instances of services
-    private let userPreferences = UserPreferences()
-    private let googlePlacesService = GooglePlacesService()
+    // Use the shared service container
+    private let serviceContainer = ServiceContainer.shared
     
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(MapViewModel(
-                    googlePlacesService: googlePlacesService,
-                    userPreferences: userPreferences
+                    googlePlacesService: serviceContainer.googlePlacesService,
+                    userPreferences: serviceContainer.userPreferences
                 ))
         }
     }

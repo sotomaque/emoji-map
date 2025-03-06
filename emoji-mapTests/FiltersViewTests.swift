@@ -79,18 +79,103 @@ class FiltersViewTests: XCTestCase {
         let minimumRatingValue = 4
         
         // When
-        let filtersView = FiltersView(
+        var filtersView = FiltersView(
             selectedPriceLevels: selectedPriceLevelsValue,
             showOpenNowOnly: showOpenNowValue,
-            minimumRating: minimumRatingValue
+            minimumRating: minimumRatingValue,
+            onApplyFilters: nil
         )
-        // Inject the environment object
-        let hostingController = UIHostingController(rootView: filtersView.environmentObject(viewModel))
-        _ = hostingController.view
+        
+        // Inject the environment object directly
+        filtersView.setViewModel(viewModel)
         
         // Then
         XCTAssertEqual(filtersView.selectedPriceLevels, [1, 3], "FiltersView should initialize with the correct price levels")
         XCTAssertTrue(filtersView.showOpenNowOnly, "FiltersView should initialize with the correct open now value")
         XCTAssertEqual(filtersView.minimumRating, 4, "FiltersView should initialize with the correct minimum rating")
+    }
+    
+    @MainActor
+    func testApplyFilters() {
+        // Given
+        let selectedPriceLevelsValue: Set<Int> = [2, 4]
+        let showOpenNowValue = true
+        let minimumRatingValue = 3
+        
+        // Create an expectation for the completion handler
+        let expectation = XCTestExpectation(description: "Apply filters")
+        
+        var filtersView = FiltersView(
+            selectedPriceLevels: selectedPriceLevelsValue,
+            showOpenNowOnly: showOpenNowValue,
+            minimumRating: minimumRatingValue,
+            onApplyFilters: {
+                expectation.fulfill()
+            }
+        )
+        
+        // Inject the environment object directly
+        filtersView.setViewModel(viewModel)
+        
+        // When
+        filtersView.applyFilters()
+        
+        // Wait for the completion handler to be called
+        wait(for: [expectation], timeout: 1.0)
+        
+        // Then
+        XCTAssertEqual(viewModel.selectedPriceLevels, [2, 4], "ViewModel should have updated price levels")
+        XCTAssertTrue(viewModel.showOpenNowOnly, "ViewModel should have updated open now value")
+        XCTAssertEqual(viewModel.minimumRating, 3, "ViewModel should have updated minimum rating")
+    }
+    
+    @MainActor
+    func testTogglePriceLevel() {
+        // Given
+        var filtersView = FiltersView(
+            selectedPriceLevels: [1, 2, 3],
+            showOpenNowOnly: false,
+            minimumRating: 0,
+            onApplyFilters: nil
+        )
+        
+        // When - remove a price level
+        filtersView.togglePriceLevel(3)
+        
+        // Then
+        XCTAssertEqual(filtersView.selectedPriceLevels, [1, 2], "Should remove price level 3")
+        
+        // When - add a price level
+        filtersView.togglePriceLevel(4)
+        
+        // Then
+        XCTAssertEqual(filtersView.selectedPriceLevels, [1, 2, 4], "Should add price level 4")
+        
+        // When - try to remove the last price level
+        filtersView.togglePriceLevel(1)
+        filtersView.togglePriceLevel(2)
+        filtersView.togglePriceLevel(4)
+        
+        // Then - should not allow removing the last price level
+        XCTAssertEqual(filtersView.selectedPriceLevels, [4], "Should not allow removing the last price level")
+    }
+    
+    @MainActor
+    func testResetFilters() {
+        // Given
+        var filtersView = FiltersView(
+            selectedPriceLevels: [2, 3],
+            showOpenNowOnly: true,
+            minimumRating: 3,
+            onApplyFilters: nil
+        )
+        
+        // When
+        filtersView.resetFilters()
+        
+        // Then
+        XCTAssertEqual(filtersView.selectedPriceLevels, [1, 2, 3, 4], "Should reset price levels to all")
+        XCTAssertFalse(filtersView.showOpenNowOnly, "Should reset open now to false")
+        XCTAssertEqual(filtersView.minimumRating, 0, "Should reset minimum rating to 0")
     }
 } 

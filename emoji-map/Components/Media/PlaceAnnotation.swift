@@ -10,31 +10,29 @@ struct PlaceAnnotation: View {
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 0) {
-                // Show rating or star icon above emoji for favorites
-                if isFavorite {
-                    if let rating = rating, rating > 0 {
-                        // Show numeric rating with star
-                        HStack(spacing: 1) {
-                            Text("\(rating)")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.yellow)
-                            
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 8))
-                                .foregroundColor(.yellow)
-                        }
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .background(Color.black.opacity(0.6))
-                        .cornerRadius(8)
-                        .offset(y: 2)
-                    } else {
-                        // Show outline star for favorites without rating
-                        Image(systemName: "star")
-                            .font(.system(size: 12))
+                // Show user rating if available
+                if let rating = rating, rating > 0 {
+                    // Show numeric rating with star
+                    HStack(spacing: 1) {
+                        Text("\(rating)")
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(.yellow)
-                            .offset(y: 2)
+                        
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 8))
+                            .foregroundColor(.yellow)
                     }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(Color.black.opacity(0.6))
+                    .cornerRadius(8)
+                    .offset(y: 2)
+                } else if isFavorite {
+                    // Show outline star for favorites without rating
+                    Image(systemName: "star")
+                        .font(.system(size: 12))
+                        .foregroundColor(.yellow)
+                        .offset(y: 2)
                 }
                 
                 Text(emoji)
@@ -79,7 +77,7 @@ struct PlaceAnnotationPreview: PreviewProvider {
             PlaceAnnotation(
                 emoji: "🚗",
                 isFavorite: false,
-                rating: nil,
+                rating: 3,
                 isLoading: false,
                 onTap: {}
             )

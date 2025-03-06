@@ -10,10 +10,18 @@ import MapKit
 
 struct PlaceDetailView: View {
     let place: Place
-    @StateObject private var viewModel = PlaceDetailViewModel()
+    @StateObject private var viewModel: PlaceDetailViewModel
     @State private var isAppearing = false
     @EnvironmentObject private var mapViewModel: MapViewModel
     @Environment(\.dismiss) private var dismiss
+    
+    // Initialize with the place and create the view model with the shared service
+    init(place: Place) {
+        self.place = place
+        // Create the view model with a _StateObject wrapper
+        // This ensures the view model is created only once
+        _viewModel = StateObject(wrappedValue: PlaceDetailViewModel())
+    }
     
     var body: some View {
         ScrollView {
@@ -77,11 +85,20 @@ struct PlaceDetailView: View {
             }
         )
         .onAppear {
+            // No need to use reflection anymore - the view model will use the shared service
             viewModel.fetchDetails(for: place)
             
             // Slight delay before showing content for smoother transition
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 isAppearing = true
+            }
+        }
+        .onDisappear {
+            // Ensure we don't lose the favorite status when the view disappears
+            // This prevents the bug where closing the view removes the place from favorites
+            if viewModel.isFavorite {
+                // Make sure the place stays favorited in both view models
+                mapViewModel.objectWillChange.send()
             }
         }
         .alert(isPresented: $viewModel.showError, content: {
@@ -97,9 +114,16 @@ struct PlaceDetailView: View {
     }
     
     private func toggleFavorite() {
-        viewModel.setFavorite(place, isFavorite: !viewModel.isFavorite)
-        // Also update in the map view model to keep state in sync
+        // First update the MapViewModel to ensure the place is properly added/removed from favorites
         mapViewModel.toggleFavorite(for: place)
+        
+        // Then update our local ViewModel to stay in sync
+        viewModel.setFavorite(place, isFavorite: mapViewModel.isFavorite(placeId: place.placeId))
+        
+        // Provide haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
     }
     
     // MARK: - Subviews
@@ -201,6 +225,33 @@ struct PlaceDetailView: View {
                 }
                 .padding(.top, 4)
             }
+            
+            // Info pills
+            HStack(spacing: 12) {
+                // Price level pill
+                InfoPill(
+                    icon: "dollarsign.circle.fill",
+                    text: place.formattedPriceLevel,
+                    color: .green
+                )
+                
+                // Rating pill
+                if place.hasRating {
+                    InfoPill(
+                        icon: "star.fill",
+                        text: place.formattedRating,
+                        color: .yellow
+                    )
+                }
+                
+                // Open status pill
+                InfoPill(
+                    icon: place.openNow == true ? "checkmark.circle.fill" : "xmark.circle.fill",
+                    text: place.openStatus,
+                    color: place.openNow == true ? .green : .red
+                )
+            }
+            .padding(.top, 8)
         }
         .padding(.horizontal)
     }
@@ -220,6 +271,11 @@ struct PlaceDetailView: View {
                     viewModel.ratePlace(rating: rating)
                     // Also update in the map view model to keep state in sync
                     mapViewModel.ratePlace(placeId: place.placeId, rating: rating)
+                    
+                    // Provide haptic feedback
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.prepare()
+                    generator.impactOccurred()
                 }
             )
             .padding(.vertical, 4)

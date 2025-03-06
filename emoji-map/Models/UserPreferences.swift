@@ -81,6 +81,10 @@ class UserPreferences: ObservableObject {
     private func saveFavorites() {
         if let encoded = try? JSONEncoder().encode(favorites) {
             userDefaults.set(encoded, forKey: favoritesKey)
+            userDefaults.synchronize() // Force immediate save
+            print("Saved \(favorites.count) favorites to UserDefaults")
+        } else {
+            print("Error: Failed to encode favorites")
         }
     }
     
@@ -88,6 +92,17 @@ class UserPreferences: ObservableObject {
         if let data = userDefaults.data(forKey: favoritesKey),
            let decoded = try? JSONDecoder().decode([FavoritePlace].self, from: data) {
             favorites = decoded
+            print("Loaded \(favorites.count) favorites from UserDefaults")
+        } else {
+            print("No favorites found in UserDefaults or decoding failed")
+        }
+    }
+    
+    // Debug method to print current favorites
+    func printFavorites() {
+        print("Current favorites (\(favorites.count)):")
+        for favorite in favorites {
+            print("- \(favorite.name) (ID: \(favorite.placeId), Category: \(favorite.category))")
         }
     }
     
