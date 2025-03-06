@@ -1,12 +1,12 @@
 import SwiftUI
 import UIKit
 
-
 struct EmojiSelector: View {
     @EnvironmentObject private var viewModel: MapViewModel
     @State private var showAllCategories = false
     @State private var scrollOffset: CGFloat = 0
     @State private var isDragging = false
+    @State private var isShuffleActive = false
     
     // Enhanced feedback for better user experience
     private let selectionFeedback = UIImpactFeedbackGenerator(style: .medium)
@@ -14,8 +14,23 @@ struct EmojiSelector: View {
     private let edgeFeedback = UIImpactFeedbackGenerator(style: .rigid)
     
     var body: some View {
-        VStack(spacing: 8) {
-            // Main horizontal scrolling filter bar
+        HStack(spacing: 12) {
+            // MARK: - Left Section: Favorites Button
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    viewModel.toggleFavoritesFilter()
+                    selectionFeedback.impactOccurred(intensity: 0.8)
+                }
+            }) {
+                FavoritesButton(
+                    isSelected: viewModel.showFavoritesOnly,
+                    isLoading: viewModel.isLoading
+                )
+            }
+            .buttonStyle(EmojiButtonStyle())
+            .disabled(viewModel.isLoading)
+            
+            // MARK: - Middle Section: Emoji Categories
             ScrollViewReader { scrollProxy in
                 // Add a container with clipping to prevent overflow
                 ZStack {
@@ -32,22 +47,6 @@ struct EmojiSelector: View {
                     // ScrollView with clipping applied
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            // Favorites filter button - now integrated into the scroll bar
-                            Button(action: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    viewModel.toggleFavoritesFilter()
-                                    selectionFeedback.impactOccurred(intensity: 0.8)
-                                }
-                            }) {
-                                FavoritesButton(
-                                    isSelected: viewModel.showFavoritesOnly,
-                                    isLoading: viewModel.isLoading
-                                )
-                            }
-                            .buttonStyle(EmojiButtonStyle())
-                            .disabled(viewModel.isLoading)
-                            .id("favorites") // ID for scrolling
-                            
                             // Add "All" button
                             Button(action: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -66,22 +65,25 @@ struct EmojiSelector: View {
                             .id("all") // ID for scrolling
                         
                             // Show all categories in a single row for standard scrolling
-                            ForEach(viewModel.categories, id: \.1) { emoji, category, _ in
+                            ForEach(viewModel.categories, id: \.1) { category in
+                                let emoji = category.0
+                                let categoryName = category.1
+                                
                                 Button(action: {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        viewModel.toggleCategory(category)
+                                        viewModel.toggleCategory(categoryName)
                                         selectionFeedback.impactOccurred(intensity: 0.8)
                                     }
                                 }) {
                                     EmojiButton(
                                         emoji: emoji,
-                                        isSelected: viewModel.selectedCategories.contains(category) && !viewModel.isAllCategoriesMode,
+                                        isSelected: viewModel.selectedCategories.contains(categoryName) && !viewModel.isAllCategoriesMode,
                                         isLoading: viewModel.isLoading
                                     )
                                 }
                                 .buttonStyle(EmojiButtonStyle())
                                 .disabled(viewModel.isLoading)
-                                .id(category) // ID for scrolling
+                                .id(categoryName) // ID for scrolling
                             }
                         }
                         .padding(.vertical, 4) // Reduced vertical padding
@@ -113,21 +115,6 @@ struct EmojiSelector: View {
                     selectionFeedback.prepare()
                     scrollFeedback.prepare()
                     edgeFeedback.prepare()
-                    
-                    // Scroll to favorites button initially if favorites filter is active
-                    if viewModel.showFavoritesOnly {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            scrollProxy.scrollTo("favorites", anchor: .leading)
-                        }
-                    }
-                }
-                .onChange(of: viewModel.showFavoritesOnly) { oldValue, newValue in
-                    if newValue {
-                        // Scroll to favorites button when activated
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            scrollProxy.scrollTo("favorites", anchor: .leading)
-                        }
-                    }
                 }
                 // Simplified gesture for haptic feedback during scrolling
                 .simultaneousGesture(
@@ -156,6 +143,29 @@ struct EmojiSelector: View {
                         }
                 )
             }
+            
+            // MARK: - Right Section: Shuffle Button
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    // Activate shuffle animation briefly
+                    isShuffleActive = true
+                    
+                    // Recommend a random place
+                    viewModel.recommendRandomPlace()
+                    
+                    // Reset shuffle animation after a delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        isShuffleActive = false
+                    }
+                }
+            }) {
+                ShuffleButton(
+                    isSelected: isShuffleActive,
+                    isLoading: viewModel.isLoading
+                )
+            }
+            .buttonStyle(EmojiButtonStyle())
+            .disabled(viewModel.isLoading || viewModel.filteredPlaces.isEmpty)
         }
         .padding(.horizontal, 12)
         .opacity(viewModel.isLoading ? 0.8 : 1.0)
@@ -168,142 +178,6 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
-    }
-}
-
-// MARK: - Favorites Button Component
-struct FavoritesButton: View {
-    let isSelected: Bool
-    let isLoading: Bool
-    
-    var body: some View {
-        ZStack {
-            Image(systemName: isSelected ? "star.fill" : "star")
-                .font(.system(size: 18))
-                .foregroundColor(isSelected ? .yellow : .gray)
-                .opacity(isLoading ? 0.6 : 1.0)
-            
-            if isLoading && isSelected {
-                // Show subtle loading indicator on selected button
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .tint(Color.yellow)
-            }
-        }
-        .frame(width: 42, height: 42)
-        .background(
-            Circle()
-                .fill(
-                    isSelected ? Color.yellow.opacity(0.15) : Color.gray.opacity(0.08)
-                )
-                .shadow(color: .black.opacity(isSelected ? 0.1 : 0.05),
-                        radius: isSelected ? 4 : 2,
-                        x: 0,
-                        y: isSelected ? 2 : 1)
-        )
-        .overlay(
-            Circle()
-                .stroke(isSelected ? Color.yellow.opacity(isLoading ? 0.5 : 1.0) : Color.gray.opacity(0.3),
-                        lineWidth: isSelected ? 2 : 1.5)
-        )
-        .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
-        .animation(.easeInOut(duration: 0.2), value: isLoading)
-    }
-}
-
-// MARK: - All Categories Button Component
-struct AllCategoriesButton: View {
-    let isSelected: Bool
-    let isLoading: Bool
-    
-    var body: some View {
-        ZStack {
-            Text("All")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(isSelected ? .white : .primary)
-                .opacity(isLoading ? 0.6 : 1.0)
-            
-            if isLoading && isSelected {
-                // Show subtle loading indicator on selected button
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .tint(Color.white)
-            }
-        }
-        .frame(width: 42, height: 42)
-        .background(
-            Circle()
-                .fill(
-                    isSelected ? Color.blue : Color.gray.opacity(0.08)
-                )
-                .shadow(color: .black.opacity(isSelected ? 0.1 : 0.05),
-                        radius: isSelected ? 4 : 2,
-                        x: 0,
-                        y: isSelected ? 2 : 1)
-        )
-        .overlay(
-            Circle()
-                .stroke(isSelected ? Color.blue.opacity(isLoading ? 0.5 : 1.0) : Color.gray.opacity(0.3),
-                        lineWidth: isSelected ? 2 : 1.5)
-        )
-        .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
-        .animation(.easeInOut(duration: 0.2), value: isLoading)
-    }
-}
-
-// MARK: - Emoji Button Component
-struct EmojiButton: View {
-    let emoji: String
-    let isSelected: Bool
-    let isLoading: Bool
-    
-    var body: some View {
-        ZStack {
-            Text(emoji)
-                .font(.system(size: 24))
-                .opacity(isLoading ? 0.6 : 1.0)
-            
-            if isLoading && isSelected {
-                // Show subtle loading indicator on selected buttons
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .tint(Color.blue)
-            }
-        }
-        .frame(width: 42, height: 42)
-        .background(
-            Circle()
-                .fill(
-                    isSelected ? Color.blue
-                        .opacity(isLoading ? 0.1 : 0.15) : Color.gray
-                        .opacity(0.08)
-                )
-                .shadow(color: .black.opacity(isSelected ? 0.1 : 0.05),
-                        radius: isSelected ? 4 : 2,
-                        x: 0,
-                        y: isSelected ? 2 : 1)
-        )
-        .overlay(
-            Circle()
-                .stroke(isSelected ? Color.blue.opacity(isLoading ? 0.5 : 1.0) : Color.gray.opacity(0.3),
-                        lineWidth: isSelected ? 2 : 1.5)
-        )
-        .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
-        .animation(.easeInOut(duration: 0.2), value: isLoading)
-    }
-}
-
-// MARK: - Custom Button Style
-struct EmojiButtonStyle: ButtonStyle {
-    func makeBody(configuration: Self.Configuration) -> some View {
-        configuration.label
-            .contentShape(Circle())
-            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
-            .opacity(configuration.isPressed ? 0.9 : 1.0)
-            .animation(
-                .spring(response: 0.2, dampingFraction: 0.7),
-                value: configuration.isPressed
-            )
     }
 }
 

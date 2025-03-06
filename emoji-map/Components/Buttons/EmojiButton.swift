@@ -1,0 +1,131 @@
+import SwiftUI
+
+struct EmojiButton: View {
+    let emoji: String
+    let isSelected: Bool
+    var isLoading: Bool = false
+    
+    var body: some View {
+        ZStack {
+            Text(emoji)
+                .font(.system(size: 24))
+                .opacity(isLoading ? 0.6 : 1.0)
+            
+            if isLoading && isSelected {
+                // Show subtle loading indicator on selected buttons
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .tint(Color.blue)
+            }
+        }
+        .frame(width: 42, height: 42)
+        .background(
+            Circle()
+                .fill(
+                    isSelected ? Color.blue
+                        .opacity(isLoading ? 0.1 : 0.15) : Color.gray
+                        .opacity(0.08)
+                )
+                .shadow(color: .black.opacity(isSelected ? 0.1 : 0.05),
+                        radius: isSelected ? 4 : 2,
+                        x: 0,
+                        y: isSelected ? 2 : 1)
+        )
+        .overlay(
+            Circle()
+                .stroke(isSelected ? Color.blue.opacity(isLoading ? 0.5 : 1.0) : Color.gray.opacity(0.3),
+                        lineWidth: isSelected ? 2 : 1.5)
+        )
+        .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: isLoading)
+    }
+}
+
+struct FavoritesButton: View {
+    let isSelected: Bool
+    var isLoading: Bool = false
+    
+    var body: some View {
+        ZStack {
+            Image(systemName: isSelected ? "star.fill" : "star")
+                .font(.system(size: 18))
+                .foregroundColor(isSelected ? .white : .primary)
+                .opacity(isLoading ? 0.6 : 1.0)
+            
+            if isLoading && isSelected {
+                // Show subtle loading indicator on selected button
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .tint(Color.white)
+            }
+        }
+        .frame(width: 42, height: 42)
+        .background(
+            Circle()
+                .fill(
+                    isSelected ? Color.yellow : Color.black.opacity(0.1)
+                )
+                .shadow(color: .black.opacity(isSelected ? 0.1 : 0.05),
+                        radius: isSelected ? 4 : 2,
+                        x: 0,
+                        y: isSelected ? 2 : 1)
+        )
+        .overlay(
+            Circle()
+                .stroke(isSelected ? Color.yellow.opacity(isLoading ? 0.5 : 1.0) : Color.gray.opacity(0.3),
+                        lineWidth: isSelected ? 2 : 1.5)
+        )
+        .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: isLoading)
+    }
+}
+
+struct AllCategoriesButton: View {
+    let isSelected: Bool
+    var isLoading: Bool = false
+    
+    var body: some View {
+        ZStack {
+            Text("All")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(isSelected ? .white : .primary)
+                .opacity(isLoading ? 0.6 : 1.0)
+            
+            if isLoading && isSelected {
+                // Show subtle loading indicator on selected button
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .tint(Color.white)
+            }
+        }
+        .frame(width: 42, height: 42)
+        .background(
+            Circle()
+                .fill(
+                    isSelected ? Color.blue : Color.gray.opacity(0.08)
+                )
+                .shadow(color: .black.opacity(isSelected ? 0.1 : 0.05),
+                        radius: isSelected ? 4 : 2,
+                        x: 0,
+                        y: isSelected ? 2 : 1)
+        )
+        .overlay(
+            Circle()
+                .stroke(isSelected ? Color.blue.opacity(isLoading ? 0.5 : 1.0) : Color.gray.opacity(0.3),
+                        lineWidth: isSelected ? 2 : 1.5)
+        )
+        .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: isLoading)
+    }
+}
+
+#Preview {
+    HStack(spacing: 12) {
+        FavoritesButton(isSelected: true)
+        AllCategoriesButton(isSelected: false)
+        EmojiButton(emoji: "🍕", isSelected: true)
+        EmojiButton(emoji: "🏠", isSelected: false)
+    }
+    .padding()
+    .previewLayout(.sizeThatFits)
+} 

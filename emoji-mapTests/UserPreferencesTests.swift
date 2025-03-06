@@ -19,7 +19,10 @@ class UserPreferencesTests: XCTestCase {
             name: "Test Restaurant",
             coordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
             category: "pizza",
-            description: "A test restaurant"
+            description: "A test restaurant",
+            priceLevel: 2,
+            openNow: true,
+            rating: 4.5
         )
         
         // Initialize the system under test

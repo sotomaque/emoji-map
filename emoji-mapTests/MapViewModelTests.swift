@@ -72,21 +72,30 @@ class MapViewModelTests: XCTestCase {
                 name: "Pizza Place",
                 coordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
                 category: "pizza",
-                description: "A pizza restaurant"
+                description: "A pizza restaurant",
+                priceLevel: 2,
+                openNow: true,
+                rating: 4.2
             ),
             Place(
                 placeId: "beer_place",
                 name: "Beer Garden",
                 coordinate: CLLocationCoordinate2D(latitude: 37.7750, longitude: -122.4195),
                 category: "beer",
-                description: "A beer garden"
+                description: "A beer garden",
+                priceLevel: 3,
+                openNow: true,
+                rating: 4.5
             ),
             Place(
                 placeId: "sushi_place",
                 name: "Sushi Bar",
                 coordinate: CLLocationCoordinate2D(latitude: 37.7751, longitude: -122.4196),
                 category: "sushi",
-                description: "A sushi restaurant"
+                description: "A sushi restaurant",
+                priceLevel: 4,
+                openNow: false,
+                rating: 4.8
             )
         ]
         

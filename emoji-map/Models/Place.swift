@@ -14,4 +14,7 @@ struct Place: Identifiable {
     let coordinate: CLLocationCoordinate2D
     let category: String
     let description: String
+    let priceLevel: Int?
+    let openNow: Bool?
+    let rating: Double?
 }

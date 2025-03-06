@@ -41,6 +41,13 @@ class MapViewModel: ObservableObject {
     @Published var showFavoritesOnly: Bool = false
     @Published var notificationMessage: String = ""
     @Published var showNotification: Bool = false
+    @Published var showSearchHereButton: Bool = false // New property to show the "Search Here" button
+    
+    // Filter properties
+    @Published var selectedPriceLevels: Set<Int> = [1, 2, 3, 4] // 1-4 representing $ to $$$$
+    @Published var showOpenNowOnly: Bool = false
+    @Published var minimumRating: Int = 0 // 0-5 stars, 0 means no filter
+    @Published var showFilters: Bool = false // Controls filter sheet visibility
     
     private let locationManager = LocationManager()
     private let googlePlacesService: GooglePlacesServiceProtocol
@@ -52,34 +59,77 @@ class MapViewModel: ObservableObject {
         selectedCategories.count == categories.count && categories.allSatisfy { selectedCategories.contains($0.1) }
     }
     
+    var activeFilterCount: Int {
+        var count = 0
+        
+        // Count price level filters
+        if selectedPriceLevels.count < 4 {
+            count += 1
+        }
+        
+        // Count open now filter
+        if showOpenNowOnly {
+            count += 1
+        }
+        
+        // Count minimum rating filter
+        if minimumRating > 0 {
+            count += 1
+        }
+        
+        return count
+    }
+    
     var isLocationAvailable: Bool {
         locationManager.location != nil
     }
     
     var filteredPlaces: [Place] {
+        // Start with all places
+        var filtered = places
+        
+        // Filter by favorites if enabled
         if showFavoritesOnly {
-            // If no categories are selected, show all favorites
-            if selectedCategories.isEmpty {
-                return places.filter { place in
-                    userPreferences.isFavorite(placeId: place.placeId)
-                }
-            } else {
-                // Show only favorites in selected categories
-                return places.filter { place in
-                    userPreferences.isFavorite(placeId: place.placeId) && 
-                    selectedCategories.contains(place.category)
-                }
-            }
-        } else {
-            // Normal filtering by selected categories
-            if selectedCategories.isEmpty {
-                return places
-            } else {
-                return places.filter { place in
-                    selectedCategories.contains(place.category)
-                }
+            filtered = filtered.filter { place in
+                userPreferences.isFavorite(placeId: place.placeId)
             }
         }
+        
+        // Filter by categories
+        if !selectedCategories.isEmpty {
+            filtered = filtered.filter { place in
+                selectedCategories.contains(place.category)
+            }
+        }
+        
+        // Filter by price level
+        if selectedPriceLevels.count < 4 { // If not all price levels are selected
+            filtered = filtered.filter { place in
+                if let priceLevel = place.priceLevel {
+                    return selectedPriceLevels.contains(priceLevel)
+                }
+                return true // Include places with no price level information
+            }
+        }
+        
+        // Filter by open now status
+        if showOpenNowOnly {
+            filtered = filtered.filter { place in
+                place.openNow == true
+            }
+        }
+        
+        // Filter by minimum rating
+        if minimumRating > 0 {
+            filtered = filtered.filter { place in
+                if let rating = place.rating {
+                    return rating >= Double(minimumRating)
+                }
+                return false // Exclude places with no rating if minimum rating is set
+            }
+        }
+        
+        return filtered
     }
     
     init(googlePlacesService: GooglePlacesServiceProtocol, userPreferences: UserPreferences = UserPreferences()) {
@@ -147,23 +197,36 @@ class MapViewModel: ObservableObject {
         let feedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
         feedbackGenerator.prepare()
         
-        if selectedCategories.contains(category) {
-            selectedCategories.remove(category)
-            // Lighter feedback for deselection
-            feedbackGenerator.impactOccurred(intensity: 0.6)
-            
-            // If we removed a category and now no categories are selected, set isAllCategoriesMode to false
-            if selectedCategories.isEmpty {
-                isAllCategoriesMode = false
-            }
-        } else {
+        // If "All" is currently selected and we're selecting a specific category
+        if isAllCategoriesMode {
+            // Turn off "All" mode
+            isAllCategoriesMode = false
+            // Clear all categories
+            selectedCategories.removeAll()
+            // Add only the selected category
             selectedCategories.insert(category)
             // Stronger feedback for selection
             feedbackGenerator.impactOccurred(intensity: 0.8)
-            
-            // If we added a category and now all categories are selected, set isAllCategoriesMode to true
-            if areAllCategoriesSelected {
-                isAllCategoriesMode = true
+        } else {
+            // Normal toggle behavior when "All" is not selected
+            if selectedCategories.contains(category) {
+                selectedCategories.remove(category)
+                // Lighter feedback for deselection
+                feedbackGenerator.impactOccurred(intensity: 0.6)
+                
+                // If we removed a category and now no categories are selected, set isAllCategoriesMode to false
+                if selectedCategories.isEmpty {
+                    isAllCategoriesMode = false
+                }
+            } else {
+                selectedCategories.insert(category)
+                // Stronger feedback for selection
+                feedbackGenerator.impactOccurred(intensity: 0.8)
+                
+                // If we added a category and now all categories are selected, set isAllCategoriesMode to true
+                if areAllCategoriesSelected {
+                    isAllCategoriesMode = true
+                }
             }
         }
         
@@ -265,13 +328,36 @@ class MapViewModel: ObservableObject {
     }
     
     func onRegionChange(newCenter: CoordinateWrapper) {
-        if distance(from: lastQueriedCenter.coordinate, to: newCenter.coordinate) > 500 {
-            lastQueriedCenter = newCenter
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                try await self.fetchAndUpdatePlaces()
-            }
+        let distanceFromLastQuery = distance(from: lastQueriedCenter.coordinate, to: newCenter.coordinate)
+        
+        // Only show the search button if we've moved more than 5km from the last query
+        // This matches the radius used in the API request
+        if distanceFromLastQuery > 5000 {
+            showSearchHereButton = true
+        } else {
+            showSearchHereButton = false
         }
+        
+        // We no longer automatically fetch places when the region changes
+        // This will be triggered by the "Search Here" button instead
+    }
+    
+    // New function to search at the current location
+    func searchHere() {
+        // Update the last queried center to the current region center
+        lastQueriedCenter = CoordinateWrapper(region.center)
+        
+        // Hide the search button
+        showSearchHereButton = false
+        
+        // Fetch places at the new location
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            try await self.fetchAndUpdatePlaces()
+        }
+        
+        // Show notification
+        showNotificationMessage("Searching in this area")
     }
     
     func onAppear() {
@@ -337,14 +423,19 @@ class MapViewModel: ObservableObject {
     
     private func fetchPlaces(center: CLLocationCoordinate2D, categories: [(emoji: String, name: String, type: String)]) async throws -> [Place] {
         return try await withCheckedThrowingContinuation { continuation in
-            googlePlacesService.fetchPlaces(center: center, categories: categories) { result in
-                switch result {
-                case .success(let places):
-                    continuation.resume(returning: places)
-                case .failure(let error):
-                    continuation.resume(throwing: error)
+            googlePlacesService.fetchPlaces(
+                center: center,
+                categories: categories,
+                showOpenNowOnly: showOpenNowOnly,
+                completion: { result in
+                    switch result {
+                    case .success(let places):
+                        continuation.resume(returning: places)
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
                 }
-            }
+            )
         }
     }
     
@@ -362,7 +453,7 @@ class MapViewModel: ObservableObject {
         return location1.distance(from: location2)
     }
     
-    private func showNotificationMessage(_ message: String) {
+    func showNotificationMessage(_ message: String) {
         notificationMessage = message
         showNotification = true
         
@@ -380,9 +471,6 @@ class MapViewModel: ObservableObject {
         let feedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
         feedbackGenerator.prepare()
         
-        // Debug print to diagnose the issue
-        print("toggleAllCategories called - areAllCategoriesSelected: \(areAllCategoriesSelected), selectedCategories.isEmpty: \(selectedCategories.isEmpty), count: \(selectedCategories.count), isAllCategoriesMode: \(isAllCategoriesMode)")
-        
         // Toggle the All Categories mode
         isAllCategoriesMode.toggle()
         
@@ -390,26 +478,59 @@ class MapViewModel: ObservableObject {
             // If switching to "All" mode, select all categories
             selectedCategories = Set(categories.map { $0.1 })
             feedbackGenerator.impactOccurred(intensity: 0.8)
-            print("After toggle - Selected all categories, count: \(selectedCategories.count)")
+            
+            // Show appropriate notification based on favorites filter
+            if showFavoritesOnly {
+                showNotificationMessage("Showing favorites in all categories")
+            } else {
+                showNotificationMessage("Showing all categories")
+            }
         } else {
             // If switching out of "All" mode, clear all categories
             selectedCategories.removeAll()
             feedbackGenerator.impactOccurred(intensity: 0.6)
-            print("After toggle - Cleared all categories, count: \(selectedCategories.count)")
-        }
-        
-        // Update notification if favorites filter is active
-        if showFavoritesOnly {
-            if selectedCategories.isEmpty {
+            
+            // Show appropriate notification based on favorites filter
+            if showFavoritesOnly {
                 showNotificationMessage("Showing all favorites")
             } else {
-                showNotificationMessage("Showing favorites in all categories")
+                showNotificationMessage("No categories selected")
             }
         }
         
         // Since we're using @MainActor, this will be dispatched to the main thread
         Task {
             try await self.fetchAndUpdatePlaces()
+        }
+    }
+    
+    // Function to recommend a random place based on current filters
+    func recommendRandomPlace() {
+        // Get the filtered places based on current selection
+        let availablePlaces = filteredPlaces
+        
+        // Check if there are any places to recommend
+        if availablePlaces.isEmpty {
+            showNotificationMessage("No places to recommend with current filters")
+            return
+        }
+        
+        // Select a random place from the filtered list
+        if let randomPlace = availablePlaces.randomElement() {
+            // Provide haptic feedback
+            let feedbackGenerator = UIImpactFeedbackGenerator(style: .heavy)
+            feedbackGenerator.prepare()
+            feedbackGenerator.impactOccurred(intensity: 1.0)
+            
+            // Update the selected place to show its details
+            selectedPlace = randomPlace
+            
+            // Show a notification
+            let categoryName = categoryName(for: randomPlace.category)
+            showNotificationMessage("Recommended: \(randomPlace.name) (\(categoryName))")
+            
+            // Update the map region to center on this place
+            updateRegion(to: randomPlace.coordinate)
         }
     }
     

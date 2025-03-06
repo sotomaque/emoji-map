@@ -20,52 +20,15 @@ struct ContentView: View {
                 annotationItems: viewModel.filteredPlaces
             ) { place in
                 MapAnnotation(coordinate: place.coordinate) {
-                    Button(action: {
-                        viewModel.selectedPlace = place
-                    }) {
-                        VStack(spacing: 0) {
-                            // Show rating or star icon above emoji for favorites
-                            if viewModel.isFavorite(placeId: place.placeId) {
-                                if let rating = viewModel.getRating(for: place.placeId), rating > 0 {
-                                    // Show numeric rating with star
-                                    HStack(spacing: 1) {
-                                        Text("\(rating)")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundColor(.yellow)
-                                        
-                                        Image(systemName: "star.fill")
-                                            .font(.system(size: 8))
-                                            .foregroundColor(.yellow)
-                                    }
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 2)
-                                    .background(Color.black.opacity(0.6))
-                                    .cornerRadius(8)
-                                    .offset(y: 2)
-                                } else {
-                                    // Show outline star for favorites without rating
-                                    Image(systemName: "star")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.yellow)
-                                        .offset(y: 2)
-                                }
-                            }
-                            
-                            Text(viewModel.categoryEmoji(for: place.category))
-                                .font(.system(size: 30))
-                                .frame(width: 40, height: 40)
-                                .background(
-                                    viewModel.isFavorite(placeId: place.placeId) ?
-                                        Circle()
-                                            .fill(Color.yellow.opacity(0.3))
-                                            .frame(width: 44, height: 44)
-                                    : nil
-                                )
+                    PlaceAnnotation(
+                        emoji: viewModel.categoryEmoji(for: place.category),
+                        isFavorite: viewModel.isFavorite(placeId: place.placeId),
+                        rating: viewModel.isFavorite(placeId: place.placeId) ? viewModel.getRating(for: place.placeId) : nil,
+                        isLoading: viewModel.isLoading,
+                        onTap: {
+                            viewModel.selectedPlace = place
                         }
-                    }
-                    .scaleEffect(viewModel.isLoading ? 0.8 : 1.0) // Subtle scale effect during loading
-                    .opacity(viewModel.isLoading ? 0.6 : 1.0) // Fade out during loading
-                    .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
+                    )
                 }
             }
             .edgesIgnoringSafeArea(.all)
@@ -82,7 +45,10 @@ struct ContentView: View {
             VStack {
                 // Configuration warning banner
                 if viewModel.showConfigWarning {
-                    configurationWarningBanner
+                    WarningBanner(
+                        message: viewModel.configWarningMessage,
+                        isVisible: viewModel.showConfigWarning
+                    )
                 }
                 
                 Spacer()
@@ -91,37 +57,13 @@ struct ContentView: View {
             if !viewModel.isLocationAvailable {
                 // Progress view when location isn't available
                 VStack {
-                    ProgressView("Finding your location...")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(Color.black.opacity(0.7))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .shadow(radius: 4)
+                    LoadingIndicator(message: "Finding your location...")
                 }
             } else {
                 // Normal content when location is available
                 VStack {
                     VStack(spacing: 4) {
-                        // Category count indicator - moved to top right
-                        HStack {
-                            Spacer()
-                            
-                            if !viewModel.selectedCategories.isEmpty {
-                                Text("\(viewModel.selectedCategories.count) \(viewModel.selectedCategories.count == 1 ? "category" : "categories")")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.gray)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        Capsule()
-                                            .fill(Color(.systemBackground).opacity(0.8))
-                                            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-                                    )
-                            }
-                        }
-                        .padding(.top, 8)
-                        .padding(.trailing, 8)
+                        // Remove the FiltersButton and category count indicator from here
                         
                         // Emoji category selector with integrated favorites button
                         EmojiSelector()
@@ -133,55 +75,52 @@ struct ContentView: View {
                     
                     // Enhanced loading indicator
                     if viewModel.isLoading {
-                        loadingIndicator
+                        LoadingIndicator(message: "Loading places...")
+                    }
+                    
+                    if viewModel.showSearchHereButton && !viewModel.isLoading {
+                        SearchHereButton(action: {
+                            viewModel.searchHere()
+                        })
+                        .padding(.bottom, 40)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.showSearchHereButton)
                     }
                 }
                 
                 // Recenter button
-                Button(action: {
-                    withAnimation {
-                        viewModel.recenterMap()
+                RecenterButton(
+                    isLoading: viewModel.isLoading,
+                    action: {
+                        withAnimation {
+                            viewModel.recenterMap()
+                        }
                     }
-                }) {
-                    Image(systemName: "location.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.white)
-                        .padding(12)
-                        .background(Color.blue)
-                        .clipShape(Circle())
-                        .shadow(radius: 4)
-                }
+                )
                 .position(x: UIScreen.main.bounds.width - 40, y: UIScreen.main.bounds.height - 120) // Bottom-right corner
-                .disabled(viewModel.isLoading) // Disable during loading
-                .opacity(viewModel.isLoading ? 0.6 : 1.0) // Fade during loading
-                .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
+                
+                // FiltersButton - moved to bottom left
+                Button(action: {
+                    viewModel.showFilters = true
+                }) {
+                    FiltersButton(
+                        activeFilterCount: viewModel.activeFilterCount,
+                        isLoading: viewModel.isLoading
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(viewModel.isLoading)
+                .position(x: 40, y: UIScreen.main.bounds.height - 120) // Bottom-left corner
             }
             
             // Notification banner
-            VStack {
-                Spacer()
-                
-                if viewModel.showNotification {
-                    Text(viewModel.notificationMessage)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white)
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 20)
-                        .background(
-                            Capsule()
-                                .fill(Color.black.opacity(0.8))
-                                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-                        )
-                        .padding(.bottom, 30)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .onAppear {
-                            // Trigger haptic feedback when notification appears
-                            triggerHapticFeedback()
-                        }
+            NotificationBanner(
+                message: viewModel.notificationMessage,
+                isVisible: viewModel.showNotification,
+                onAppear: {
+                    // Trigger haptic feedback when notification appears
+                    triggerHapticFeedback()
                 }
-            }
-            .animation(.spring(response: 0.4), value: viewModel.showNotification)
-            .zIndex(100) // Ensure it's above other elements
+            )
         }
         .onAppear {
             viewModel.onAppear()
@@ -190,7 +129,11 @@ struct ContentView: View {
             viewModel.onRegionChange(newCenter: newValue)
         }
         .sheet(item: $viewModel.selectedPlace) { place in
-            PlaceDetailView(place: place)
+            NavigationStack {
+                PlaceDetailView(place: place)
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .alert(isPresented: $viewModel.showError, content: {
             Alert(
@@ -202,53 +145,22 @@ struct ContentView: View {
                 secondaryButton: .cancel()
             )
         })
-    }
-    
-    // Enhanced loading indicator
-    private var loadingIndicator: some View {
-        VStack(spacing: 12) {
-            ProgressView()
-                .scaleEffect(1.2)
-                .tint(.white)
-            
-            Text("Loading places...")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
+        // Add sheet for filters
+        .sheet(isPresented: $viewModel.showFilters) {
+            FiltersView(
+                selectedPriceLevels: viewModel.selectedPriceLevels,
+                showOpenNowOnly: viewModel.showOpenNowOnly,
+                minimumRating: viewModel.minimumRating
+            )
+            .environmentObject(viewModel)
         }
-        .padding(.vertical, 16)
-        .padding(.horizontal, 24)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.black.opacity(0.7))
-                .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
-        )
-        .transition(.opacity.combined(with: .scale))
-        .animation(.spring(response: 0.3), value: viewModel.isLoading)
-    }
-    
-    // Configuration warning banner
-    private var configurationWarningBanner: some View {
-        VStack {
-            Text(viewModel.configWarningMessage)
-                .font(.system(size: 14, weight: .medium))
-                .multilineTextAlignment(.center)
-                .foregroundColor(.white)
-                .padding(.vertical, 8)
-                .padding(.horizontal, 16)
-                .background(Color.orange)
-                .cornerRadius(0)
-                .frame(maxWidth: .infinity)
-        }
-        .transition(.move(edge: .top))
-        .animation(.easeInOut, value: viewModel.showConfigWarning)
     }
     
     // Haptic feedback function
     private func triggerHapticFeedback() {
         // Prevent multiple haptics in quick succession
         let now = Date()
-        if now.timeIntervalSince(lastHapticTime) > 0.5 {
+        if now.timeIntervalSince(lastHapticTime) > 1.0 {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
             lastHapticTime = now

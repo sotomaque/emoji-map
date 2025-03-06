@@ -58,49 +58,11 @@ struct StarRatingView: View {
     }
 }
 
-// Read-only version of the star rating view
-struct StarRatingDisplayView: View {
-    let rating: Int
-    let maxRating: Int
-    let size: CGFloat
-    let color: Color
-    
-    init(
-        rating: Int,
-        maxRating: Int = 5,
-        size: CGFloat = 16,
-        color: Color = .yellow
-    ) {
-        self.rating = min(max(rating, 0), maxRating)
-        self.maxRating = maxRating
-        self.size = size
-        self.color = color
-    }
-    
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(1...maxRating, id: \.self) { star in
-                Image(systemName: star <= rating ? "star.fill" : "star")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: size, height: size)
-                    .foregroundColor(color)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Rating: \(rating) out of \(maxRating) stars")
-    }
-}
-
 #Preview {
     VStack(spacing: 20) {
         StarRatingView(currentRating: 3)
         
         StarRatingView(currentRating: 4, size: 32, color: .orange)
-        
-        StarRatingDisplayView(rating: 2)
-        
-        StarRatingDisplayView(rating: 5, size: 20, color: .red)
     }
     .padding()
 } 

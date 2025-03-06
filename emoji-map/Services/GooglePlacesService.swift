@@ -55,6 +55,7 @@ protocol GooglePlacesServiceProtocol {
     func fetchPlaces(
         center: CLLocationCoordinate2D,
         categories: [(emoji: String, name: String, type: String)],
+        showOpenNowOnly: Bool,
         completion: @escaping (Result<[Place], NetworkError>) -> Void
     )
     
@@ -115,6 +116,7 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
     func fetchPlaces(
         center: CLLocationCoordinate2D,
         categories: [(emoji: String, name: String, type: String)],
+        showOpenNowOnly: Bool = false,
         completion: @escaping (Result<[Place], NetworkError>) -> Void
     ) {
         // Cancel any existing places request
@@ -122,7 +124,7 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
         
         // If using mock key, use mock data instead of making real API calls
         if useMockData {
-            mockService.fetchPlaces(center: center, categories: categories, completion: completion)
+            mockService.fetchPlaces(center: center, categories: categories, showOpenNowOnly: showOpenNowOnly, completion: completion)
             return
         }
         
@@ -152,8 +154,9 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
                     "radius": "5000", // 5km radius
                     "type": placeType,
                     "keyword": category,
-                    "key": apiKey
-                ]
+                    "key": apiKey,
+                    "opennow": showOpenNowOnly ? "true" : nil // Add open now parameter if filter is enabled
+                ].compactMapValues { $0 } // Remove nil values
                 
                 guard let url = createURL(baseURL: baseURL, parameters: parameters) else {
                     encounteredError = .invalidURL
@@ -212,7 +215,10 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
                                     longitude: result.geometry.location.lng
                                 ),
                                 category: category,
-                                description: result.vicinity
+                                description: result.vicinity,
+                                priceLevel: result.price_level,
+                                openNow: result.opening_hours?.open_now,
+                                rating: result.rating
                             )
                         }
                         allPlaces.append(contentsOf: categoryPlaces)
@@ -248,6 +254,11 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
             if Task.isCancelled {
                 completion(.failure(.requestCancelled))
                 return
+            }
+            
+            // Apply open now filter if enabled
+            if showOpenNowOnly {
+                allPlaces = allPlaces.filter { $0.openNow == true }
             }
             
             // Return results or error
@@ -395,11 +406,11 @@ class MockGooglePlacesService: GooglePlacesServiceProtocol {
     var mockDetails: PlaceDetails?
     
     private let defaultMockPlaces: [Place] = [
-        Place(placeId: "mock1", name: "Pizza Place", coordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194), category: "pizza", description: "123 Pizza St"),
-        Place(placeId: "mock2", name: "Beer Bar", coordinate: CLLocationCoordinate2D(latitude: 37.7750, longitude: -122.4180), category: "beer", description: "456 Beer Ave"),
-        Place(placeId: "mock3", name: "Sushi Spot", coordinate: CLLocationCoordinate2D(latitude: 37.7760, longitude: -122.4170), category: "sushi", description: "789 Sushi Blvd"),
-        Place(placeId: "mock4", name: "Coffee Shop", coordinate: CLLocationCoordinate2D(latitude: 37.7770, longitude: -122.4160), category: "coffee", description: "101 Coffee Rd"),
-        Place(placeId: "mock5", name: "Burger Joint", coordinate: CLLocationCoordinate2D(latitude: 37.7780, longitude: -122.4150), category: "burger", description: "202 Burger Ln")
+        Place(placeId: "mock1", name: "Pizza Place", coordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194), category: "pizza", description: "123 Pizza St", priceLevel: 2, openNow: true, rating: 4.5),
+        Place(placeId: "mock2", name: "Beer Bar", coordinate: CLLocationCoordinate2D(latitude: 37.7750, longitude: -122.4180), category: "beer", description: "456 Beer Ave", priceLevel: 3, openNow: true, rating: 4.2),
+        Place(placeId: "mock3", name: "Sushi Spot", coordinate: CLLocationCoordinate2D(latitude: 37.7760, longitude: -122.4170), category: "sushi", description: "789 Sushi Blvd", priceLevel: 4, openNow: false, rating: 4.8),
+        Place(placeId: "mock4", name: "Coffee Shop", coordinate: CLLocationCoordinate2D(latitude: 37.7770, longitude: -122.4160), category: "coffee", description: "101 Coffee Rd", priceLevel: 1, openNow: true, rating: 3.9),
+        Place(placeId: "mock5", name: "Burger Joint", coordinate: CLLocationCoordinate2D(latitude: 37.7780, longitude: -122.4150), category: "burger", description: "202 Burger Ln", priceLevel: 2, openNow: false, rating: 4.0)
     ]
     
     // Create properly encoded URLs for mock photos
@@ -421,11 +432,17 @@ class MockGooglePlacesService: GooglePlacesServiceProtocol {
         self.mockDetails = mockDetails
     }
     
-    func fetchPlaces(center: CLLocationCoordinate2D, categories: [(emoji: String, name: String, type: String)], completion: @escaping (Result<[Place], NetworkError>) -> Void) {
+    func fetchPlaces(center: CLLocationCoordinate2D, categories: [(emoji: String, name: String, type: String)], showOpenNowOnly: Bool = false, completion: @escaping (Result<[Place], NetworkError>) -> Void) {
         DispatchQueue.main.async {
-            let places = self.mockPlaces ?? self.defaultMockPlaces.filter { place in
+            var places = self.mockPlaces ?? self.defaultMockPlaces.filter { place in
                 categories.contains { $0.name == place.category }
             }
+            
+            // Apply open now filter if enabled
+            if showOpenNowOnly {
+                places = places.filter { $0.openNow == true }
+            }
+            
             completion(.success(places))
         }
     }

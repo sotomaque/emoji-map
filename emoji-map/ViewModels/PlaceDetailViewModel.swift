@@ -18,6 +18,11 @@ class PlaceDetailViewModel: ObservableObject {
     @Published var isFavorite = false
     @Published var userRating: Int = 0
     
+    // Computed property to convert tuple reviews to Review objects
+    var reviewObjects: [Review] {
+        return reviews.map { Review(authorName: $0.0, text: $0.1, rating: $0.2) }
+    }
+    
     private let service: GooglePlacesServiceProtocol
     private let userPreferences: UserPreferences
     var currentPlaceId: String?
