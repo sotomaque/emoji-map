@@ -9,6 +9,7 @@ import Foundation
 import UIKit
 import MapKit
 import os
+import Combine
 
 // Thread-safe actor for managing shared state
 @MainActor
@@ -18,9 +19,27 @@ class PlaceDetailViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: NetworkError?
     @Published var showError = false
-    @Published var isFavorite = false
-    @Published var userRating: Int = 0
     @Published var distanceFromUser: Double? = nil
+    
+    // Flag to track if the view model has been properly initialized with a real MapViewModel
+    private var isInitialized = false
+    
+    // Reference to the MapViewModel
+    private var mapViewModel: MapViewModel
+    
+    // Current place ID
+    var currentPlaceId: String?
+    
+    // Computed properties that delegate to MapViewModel
+    var isFavorite: Bool {
+        guard isInitialized, let placeId = currentPlaceId else { return false }
+        return mapViewModel.isFavorite(placeId: placeId)
+    }
+    
+    var userRating: Int {
+        guard isInitialized, let placeId = currentPlaceId else { return 0 }
+        return mapViewModel.getRating(for: placeId) ?? 0
+    }
     
     // Computed property to convert tuple reviews to Review objects
     var reviewObjects: [Review] {
@@ -29,11 +48,9 @@ class PlaceDetailViewModel: ObservableObject {
     
     // Computed property to format the distance in a user-friendly way
     var formattedDistance: String {
-        return userPreferences.formatDistance(distanceFromUser)
+        guard isInitialized, let distance = distanceFromUser else { return "Distance unavailable" }
+        return mapViewModel.preferences.formatDistance(distance)
     }
-    
-    private let userPreferences: UserPreferences
-    var currentPlaceId: String?
     
     // Make service a private variable instead of a constant so we can update it
     private var service: GooglePlacesServiceProtocol
@@ -44,11 +61,26 @@ class PlaceDetailViewModel: ObservableObject {
     // Cache instance
     private let cache = NetworkCache.shared
     
-    init(service: GooglePlacesServiceProtocol? = nil, userPreferences: UserPreferences? = nil) {
-        // Use the provided service or get the shared instance
+    // Default initializer that creates a dummy MapViewModel
+    init() {
+        // Create a dummy MapViewModel that will be replaced later
+        self.mapViewModel = MapViewModel()
+        self.isInitialized = false
+        // Use the shared service from ServiceContainer
+        self.service = ServiceContainer.shared.googlePlacesService
+        
+        // Log that we're using the default initializer
+        logger.info("PlaceDetailViewModel initialized with default initializer (dummy MapViewModel)")
+    }
+    
+    init(mapViewModel: MapViewModel, service: GooglePlacesServiceProtocol? = nil) {
+        self.mapViewModel = mapViewModel
+        self.isInitialized = true
+        // Use the provided service or get the shared instance from ServiceContainer
         self.service = service ?? ServiceContainer.shared.googlePlacesService
-        // Use the provided userPreferences or get the shared instance
-        self.userPreferences = userPreferences ?? ServiceContainer.shared.userPreferences
+        
+        // Log that we're using the real initializer
+        logger.info("PlaceDetailViewModel initialized with real MapViewModel")
     }
     
     // Method to update the service after initialization - no longer needed but kept for compatibility
@@ -76,6 +108,15 @@ class PlaceDetailViewModel: ObservableObject {
     }
     
     func fetchDetails(for place: Place) {
+        // Set the current place ID first
+        currentPlaceId = place.placeId
+        
+        // Only proceed with network requests if we need to fetch photos and reviews
+        fetchNetworkDetails(for: place)
+    }
+    
+    // Fetch details that require network requests
+    private func fetchNetworkDetails(for place: Place) {
         // Use a task to delay showing the loading indicator
         let loadingTask = Task { @MainActor in
             // Wait a short delay before showing loading indicator
@@ -87,15 +128,8 @@ class PlaceDetailViewModel: ObservableObject {
         
         error = nil
         showError = false
-        currentPlaceId = place.placeId
         
-        // Check if place is a favorite
-        isFavorite = userPreferences.isFavorite(placeId: place.placeId)
-        
-        // Get user rating if available
-        userRating = userPreferences.getRating(for: place.placeId) ?? 0
-        
-        logger.info("Fetching details for place: \(place.name) (ID: \(place.placeId))")
+        logger.info("Fetching network details for place: \(place.name) (ID: \(place.placeId))")
         
         // Check if we have cached details for this place
         if let cachedDetails = cache.retrievePlaceDetails(forPlaceId: place.placeId) {
@@ -153,45 +187,54 @@ class PlaceDetailViewModel: ObservableObject {
     }
     
     func toggleFavorite() {
-        guard let placeId = currentPlaceId else { return }
+        // Only proceed if we're properly initialized
+        guard isInitialized else {
+            logger.error("❌ ERROR: Cannot toggle favorite - PlaceDetailViewModel not properly initialized")
+            return
+        }
         
+        guard let placeId = currentPlaceId else {
+            logger.error("❌ ERROR: Cannot toggle favorite - no current placeId")
+            return
+        }
+        
+        // Toggle the favorite status directly in the MapViewModel
         if isFavorite {
-            userPreferences.removeFavorite(placeId: placeId)
-            isFavorite = false
+            mapViewModel.removeFavorite(placeId: placeId)
         } else {
-            // We can't add to favorites without the full place object
-            // This method should not be called directly - use setFavorite instead
-            logger.warning("Cannot add to favorites without full place object. Use setFavorite instead.")
-            // Don't change the isFavorite state since we couldn't actually add it
+            // We need the place object to add it as a favorite
+            if let place = mapViewModel.places.first(where: { $0.placeId == placeId }) {
+                mapViewModel.addFavorite(place)
+            }
         }
         
         // Notify UI of change
         objectWillChange.send()
-    }
-    
-    func setFavorite(_ place: Place, isFavorite: Bool) {
-        logger.info("Setting favorite status for \(place.name) to \(isFavorite)")
         
-        if isFavorite {
-            userPreferences.addFavorite(place)
-        } else {
-            userPreferences.removeFavorite(placeId: place.placeId)
-        }
-        
-        // Update the local state
-        self.isFavorite = isFavorite
-        
-        // Notify UI of change
-        objectWillChange.send()
+        logger.info("Favorite status updated to: \(!self.isFavorite)")
     }
     
     func ratePlace(rating: Int) {
-        guard let placeId = currentPlaceId else { return }
-        userPreferences.ratePlace(placeId: placeId, rating: rating)
-        userRating = rating
+        // Only proceed if we're properly initialized
+        guard isInitialized else {
+            logger.error("❌ ERROR: Cannot rate place - PlaceDetailViewModel not properly initialized")
+            return
+        }
+        
+        guard let placeId = currentPlaceId else {
+            logger.error("❌ ERROR: Cannot rate place - no current placeId")
+            return
+        }
+        
+        logger.info("📝 INFO: Rating place with ID: \(placeId) with rating: \(rating)")
+        
+        // Update rating directly in the MapViewModel
+        mapViewModel.ratePlace(placeId: placeId, rating: rating)
         
         // Notify UI of change
         objectWillChange.send()
+        
+        logger.info("📝 INFO: Rating updated to: \(rating)")
     }
     
     func retryFetchDetails(for place: Place) {
@@ -205,14 +248,21 @@ class PlaceDetailViewModel: ObservableObject {
         // The data will be available if the view is shown again
     }
     
-    // Method to update the distance when the user's location changes
-    func updateDistanceFromUser(place: Place, userLocation: CLLocation?) {
-        calculateDistanceFromUser(place: place, userLocation: userLocation)
-    }
-    
     // Cancel all pending requests when the view model is deallocated
     deinit {
         // Only cancel place details requests, not all requests
         service.cancelPlaceDetailsRequests()
+    }
+    
+    // Method to update the MapViewModel after initialization
+    func updateMapViewModel(_ newMapViewModel: MapViewModel) {
+        // This method allows us to update the MapViewModel reference after initialization
+        // This is needed because we can't access the @EnvironmentObject in the initializer
+        if self.mapViewModel !== newMapViewModel {
+            // Only update if the reference is different
+            self.mapViewModel = newMapViewModel
+            self.isInitialized = true
+            logger.info("MapViewModel updated in PlaceDetailViewModel, isInitialized set to true")
+        }
     }
 }

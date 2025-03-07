@@ -33,6 +33,7 @@ Carthage/Build/
 .env
 *.xcconfig
 !default.xcconfig
+emoji-map.xcodeproj/xcshareddata/xcschemes/emoji-map.xcscheme
 
 # Generated files
 DerivedData/

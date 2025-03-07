@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import MapKit
 
 // Mock implementation of GooglePlacesServiceProtocol for testing and development
 class MockGooglePlacesService: GooglePlacesServiceProtocol {
@@ -50,6 +51,7 @@ class MockGooglePlacesService: GooglePlacesServiceProtocol {
     
     func fetchPlaces(
         center: CLLocationCoordinate2D,
+        region: MKCoordinateRegion?,
         categories: [(emoji: String, name: String, type: String)],
         showOpenNowOnly: Bool,
         completion: @escaping (Result<[Place], NetworkError>) -> Void

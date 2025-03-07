@@ -9,7 +9,11 @@ import SwiftUI
 import MapKit
 
 struct ContentView: View {
-    @EnvironmentObject private var viewModel: MapViewModel
+    @StateObject private var viewModel = {
+        MainActor.assumeIsolated {
+            ServiceContainer.shared.mapViewModel
+        }
+    }()
     @State private var lastHapticTime: Date = Date.distantPast
     @State private var centerCoordinate = CLLocationCoordinate2D()
     @State private var lastRegionChangeTime: Date = Date.distantPast
@@ -29,8 +33,10 @@ struct ContentView: View {
                         coordinate: place.coordinate,
                         content: {
                             PlaceAnnotation(
-                                emoji: viewModel.categoryEmoji(for: place.category),
-                                isFavorite: viewModel.isFavorite(placeId: place.placeId),
+                                emoji: viewModel
+                                    .categoryEmoji(for: place.category),
+                                isFavorite: viewModel
+                                    .isFavorite(placeId: place.placeId),
                                 rating: viewModel.getRating(for: place.placeId),
                                 isLoading: viewModel.isLoading,
                                 onTap: {
@@ -73,25 +79,17 @@ struct ContentView: View {
             .overlay(
                 // Map overlay for loading - more subtle approach
                 viewModel.isLoading ?
-                    ZStack {
-                        // Semi-transparent overlay that doesn't completely hide the map
-                        Rectangle()
-                            .fill(Color.white.opacity(0.05))
-                            .edgesIgnoringSafeArea(.all)
-                    }
-                    : nil
+                ZStack {
+                    // Semi-transparent overlay that doesn't completely hide the map
+                    Rectangle()
+                        .fill(Color.white.opacity(0.05))
+                        .edgesIgnoringSafeArea(.all)
+                }
+                : nil
             )
             
             // Overlay layers
             VStack {
-                // Configuration warning banner
-                if viewModel.showConfigWarning {
-                    WarningBanner(
-                        message: viewModel.configWarningMessage,
-                        isVisible: viewModel.showConfigWarning
-                    )
-                }
-                
                 // Loading indicator at the top - minimal style to prevent layout shifts
                 if viewModel.isLoading {
                     UnifiedLoadingIndicator(
@@ -123,16 +121,30 @@ struct ContentView: View {
                 }
             } else {
                 // Normal content when location is available or permission is denied
-                VStack {
-                    // Emoji category selector with integrated favorites button - HIGHER Z-INDEX
-                    VStack(spacing: 4) {
-                        EmojiSelector()
-                            .disabled(viewModel.isLoading) // Disable interaction during loading
-                            .opacity(viewModel.isLoading ? 0.7 : 1.0) // Subtle fade during loading
-                    }
-                    .zIndex(50) // Higher z-index to ensure it's above the notification banner
+                VStack(spacing: 8) {
+                    // Emoji selector at the top
+                    EmojiSelector()
+                        .environmentObject(viewModel)
+                        .disabled(viewModel.isLoading)
+                        .opacity(viewModel.isLoading ? 0.7 : 1.0) 
+                
+                    // Single banner that shows either config warning or notification
+                    Banner(
+                        // If there's a config warning, show that, otherwise show notification message
+                        message: viewModel.showConfigWarning ? viewModel.configWarningMessage : viewModel.notificationMessage,
+                        // Show if either config warning or notification is active
+                        isVisible: viewModel.showConfigWarning || viewModel.showNotification,
+                        // Use warning style for config warnings, notification style otherwise
+                        style: viewModel.showConfigWarning ? .warning : .notification,
+                        onAppear: {
+                            // Only trigger haptic feedback for notifications, not config warnings
+                            if viewModel.showNotification && !viewModel.showConfigWarning {
+                                triggerHapticFeedback()
+                            }
+                        }
+                    )
                     
-                    Spacer() // Push selector to the top
+                    Spacer()
                     
                     if viewModel.showSearchHereButton {
                         SearchHereButton(
@@ -142,28 +154,13 @@ struct ContentView: View {
                             isLoading: viewModel.isLoading
                         )
                         .padding(.bottom, 40)
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.showSearchHereButton)
-                    }
-                }
-                
-                // Notification banner - LOWER Z-INDEX
-                // Positioned as a separate element in the main ZStack
-                if viewModel.showNotification {
-                    VStack {
-                        Spacer() // Push to bottom
-                        
-                        NotificationBanner(
-                            message: viewModel.notificationMessage,
-                            isVisible: true,
-                            onAppear: {
-                                // Trigger haptic feedback when notification appears
-                                triggerHapticFeedback()
-                            }
+                        .animation(
+                            .spring(response: 0.3, dampingFraction: 0.7),
+                            value: viewModel.showSearchHereButton
                         )
-                        .padding(.bottom, 100) // Add padding to position above bottom buttons
                     }
-                    .zIndex(10) // Lower z-index to ensure it's below the emoji selector
                 }
+                .zIndex(20)
                 
                 // Recenter button
                 RecenterButton(
@@ -174,8 +171,13 @@ struct ContentView: View {
                         }
                     }
                 )
-                .position(x: UIScreen.main.bounds.width - 40, y: UIScreen.main.bounds.height - 120) // Bottom-right corner
-                .zIndex(20) // Higher than notification but lower than emoji selector
+                .position(
+                    x: UIScreen.main.bounds.width - 40,
+                    y: UIScreen.main.bounds.height - 120
+                ) // Bottom-right corner
+                .zIndex(
+                    20
+                ) // Higher than notification but lower than emoji selector
                 
                 // FiltersButton - moved to bottom left
                 Button(action: {
@@ -188,8 +190,13 @@ struct ContentView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 .disabled(viewModel.isLoading)
-                .position(x: 40, y: UIScreen.main.bounds.height - 120) // Bottom-left corner
-                .zIndex(20) // Higher than notification but lower than emoji selector
+                .position(
+                    x: 40,
+                    y: UIScreen.main.bounds.height - 120
+                ) // Bottom-left corner
+                .zIndex(
+                    20
+                ) // Higher than notification but lower than emoji selector
                 // Add long press gesture for settings (easter egg)
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 1.0)
@@ -217,7 +224,7 @@ struct ContentView: View {
                             }
                         }
                     }
-                    .animation(.easeInOut, value: showTooltip)
+                        .animation(.easeInOut, value: showTooltip)
                 )
             }
             
@@ -265,12 +272,16 @@ struct ContentView: View {
                     showTooltip = true
                     
                     // Hide tooltip after 5 seconds
-                    tooltipTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { _ in
-                        withAnimation {
-                            showTooltip = false
+                    tooltipTimer = Timer
+                        .scheduledTimer(
+                            withTimeInterval: 5.0,
+                            repeats: false
+                        ) { _ in
+                            withAnimation {
+                                showTooltip = false
+                            }
+                            viewModel.preferences.markSettingsTooltipAsShown()
                         }
-                        viewModel.preferences.markSettingsTooltipAsShown()
-                    }
                 }
             }
         }
@@ -287,20 +298,30 @@ struct ContentView: View {
         .sheet(item: $viewModel.selectedPlace) { place in
             NavigationStack {
                 PlaceDetailView(place: place)
+                    .environmentObject(viewModel)
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            .interactiveDismissDisabled(true)
+            .presentationBackground {
+                Color(.systemGroupedBackground)
+                    .opacity(0.98)
+            }
         }
-        .alert(isPresented: $viewModel.showError, content: {
+        .alert(
+isPresented: $viewModel.showError,
+ content: {
             Alert(
                 title: Text("Error"),
-                message: Text(viewModel.error?.localizedDescription ?? "An unknown error occurred"),
+                message: Text(
+                    viewModel.error?.localizedDescription ?? "An unknown error occurred"
+                ),
                 primaryButton: .default(Text("Retry")) {
                     viewModel.retryFetchPlaces()
                 },
                 secondaryButton: .cancel()
             )
-        })
+ })
         // Add sheet for filters
         .sheet(isPresented: $viewModel.showFilters) {
             FiltersView(
@@ -339,21 +360,32 @@ struct ContentView: View {
         debounceTimer?.invalidate()
         
         // Create a new timer that will fire after a short delay
-        debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
-            // Only process region changes that are at least 0.3 seconds apart
-            let now = Date()
-            if now.timeIntervalSince(self.lastRegionChangeTime) >= 0.3 {
-                self.lastRegionChangeTime = now
+        debounceTimer = Timer
+            .scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
+                // Only process region changes that are at least 0.3 seconds apart
+                let now = Date()
+                if now.timeIntervalSince(self.lastRegionChangeTime) >= 0.3 {
+                    self.lastRegionChangeTime = now
                 
-                // Ensure we're on the main thread when calling viewModel methods
-                if Thread.isMainThread {
-                    self.viewModel.onRegionChange(newCenter: CoordinateWrapper(self.centerCoordinate))
-                } else {
-                    DispatchQueue.main.async {
-                        self.viewModel.onRegionChange(newCenter: CoordinateWrapper(self.centerCoordinate))
+                    // Ensure we're on the main thread when calling viewModel methods
+                    if Thread.isMainThread {
+                        self.viewModel
+                            .onRegionChange(
+                                newCenter: CoordinateWrapper(
+                                    self.centerCoordinate
+                                )
+                            )
+                    } else {
+                        DispatchQueue.main.async {
+                            self.viewModel
+                                .onRegionChange(
+                                    newCenter: CoordinateWrapper(
+                                        self.centerCoordinate
+                                    )
+                                )
+                        }
                     }
                 }
             }
-        }
     }
 }

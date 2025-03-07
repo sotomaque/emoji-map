@@ -26,39 +26,36 @@ Location: `emoji-map/CustomInfo.plist`
 
 The app requires a Google Places API key to fetch restaurant data. The key is retrieved in the following order:
 
-1. From Xcode environment variables (primary source)
-2. From the device keychain (for production)
+1. From environment variables (primary source)
+2. From the .env file in the app bundle
 
 If no key is found, the app falls back to mock data mode.
 
-## Setting Up Environment Variables
+## Secure API Key Management
 
-### For Local Development (Simulator and Device)
+To avoid exposing API keys in source control or in the app bundle, we use environment variables:
 
-1. In Xcode, select your project in the Project Navigator
-2. Select your app target
-3. Go to the "Edit Scheme" option (Product > Scheme > Edit Scheme)
-4. Select the "Run" action
-5. Go to the "Arguments" tab
-6. Under "Environment Variables", click the "+" button
-7. Add a variable with name "GOOGLE_PLACES_API_KEY" and your actual API key as the value
-8. Make sure the checkbox next to it is checked
+### Environment Variables (Recommended)
 
-This will set the environment variable for your app when running in the simulator or on a device from Xcode.
+1. Create a `.env` file (add to .gitignore) with your API key:
 
-### For CI/CD and Production (Xcode Cloud)
+   ```
+   GOOGLE_PLACES_API_KEY=your_actual_api_key_here
+   ```
 
-1. In App Store Connect, go to your app's Xcode Cloud workflow
-2. Add an environment variable named "GOOGLE_PLACES_API_KEY" with your API key
-3. Make sure it's marked as a secret for security
+2. The build script automatically loads this environment variable during build time.
 
-## Obtaining a Google Places API Key
+3. For CI/CD pipelines (like Xcode Cloud), set the environment variable directly in your build system.
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the Places API for your project
-4. Create an API key
-5. Add the key to your Xcode environment variables as described above
+### Setting Up Your API Key
+
+1. Obtain a Google Places API key from the [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable the Places API for your project
+3. Create a `.env` file in the project root with your API key:
+   ```
+   GOOGLE_PLACES_API_KEY=your_actual_api_key_here
+   ```
+4. For production builds, set the environment variable in your CI/CD pipeline
 
 ## Mock Data Mode
 
@@ -75,7 +72,8 @@ For production builds:
 1. Never commit API keys to source control
 2. Use environment variables for key injection
 3. Consider implementing API key restrictions in the Google Cloud Console
-4. The API key is never stored in the app bundle, making it impossible for users to extract it
+4. Ensure `.env` files are in your `.gitignore`
+5. The API key is never stored in the app bundle, making it impossible for users to extract it
 
 ## Troubleshooting
 
@@ -83,18 +81,17 @@ For production builds:
 
 If the app shows "API key not configured properly":
 
-1. Verify the `GOOGLE_PLACES_API_KEY` environment variable is set in your Xcode scheme
-2. Check that the variable name is exactly "GOOGLE_PLACES_API_KEY"
-3. Make sure the checkbox next to the environment variable is checked
-4. Clean and rebuild the project
+1. Verify the `GOOGLE_PLACES_API_KEY` environment variable is set
+2. Check that the build script is running correctly
+3. Clean and rebuild the project
 
-### Device Testing
+### CI/CD Setup
 
-When testing on a physical device:
+For CI/CD pipelines:
 
-1. Make sure you're running the app directly from Xcode
-2. The environment variables set in your Xcode scheme will be passed to the app
-3. If you install the app through TestFlight or the App Store, the environment variables from Xcode Cloud will be used
+1. Set the `GOOGLE_PLACES_API_KEY` environment variable in your CI/CD system
+2. Ensure the build script runs before the "Compile Sources" phase
+3. Verify the environment variable is accessible to the build process
 
 ## Example CI/CD Configuration
 

@@ -45,13 +45,13 @@ enum DistanceUnit: String, CaseIterable, Identifiable, Codable {
 struct PlaceRating: Codable, Identifiable, Equatable {
     let id: UUID
     let placeId: String
-    let rating: Int // 1-5 stars
+    let rating: Int // 0-5 stars (0 means no rating)
     let timestamp: Date
     
     init(placeId: String, rating: Int) {
         self.id = UUID()
         self.placeId = placeId
-        self.rating = min(max(rating, 1), 5) // Ensure rating is between 1-5
+        self.rating = min(max(rating, 0), 5) // Ensure rating is between 0-5 (0 means no rating)
         self.timestamp = Date()
     }
     
@@ -78,6 +78,16 @@ struct FavoritePlace: Codable, Identifiable, Equatable {
         self.addedAt = Date()
     }
     
+    // Initialize with minimal information when we only have a placeId
+    init(placeId: String, name: String, timestampAdded: Date) {
+        self.id = UUID()
+        self.placeId = placeId
+        self.name = name
+        self.category = "unknown" // Default category
+        self.coordinate = CoordinateWrapper(CLLocationCoordinate2D(latitude: 0, longitude: 0)) // Default coordinate
+        self.addedAt = timestampAdded
+    }
+    
     static func == (lhs: FavoritePlace, rhs: FavoritePlace) -> Bool {
         return lhs.id == rhs.id
     }
@@ -91,6 +101,11 @@ class UserPreferences: ObservableObject {
     @Published var hasShownSettingsTooltip: Bool = false
     @Published var distanceUnit: DistanceUnit = .miles
     @Published var defaultMapApp: String = "Apple Maps"
+    @Published var useDarkMode: Bool = false
+    
+    // Notification for preference changes
+    static let favoritesChangedNotification = Notification.Name("UserPreferences.favoritesChanged")
+    static let ratingsChangedNotification = Notification.Name("UserPreferences.ratingsChanged")
     
     private let favoritesKey = "user_favorites"
     private let ratingsKey = "user_ratings"
@@ -98,6 +113,9 @@ class UserPreferences: ObservableObject {
     private let settingsTooltipKey = "has_shown_settings_tooltip"
     private let distanceUnitKey = "distance_unit"
     private let defaultMapAppKey = "default_map_app"
+    private let useDarkModeKey = "use_dark_mode"
+    private let hasSetDarkModeKey = "has_set_dark_mode"
+    
     let userDefaults: UserDefaults
     
     init(userDefaults: UserDefaults = .standard) {
@@ -108,6 +126,7 @@ class UserPreferences: ObservableObject {
         loadSettingsTooltipStatus()
         loadDistanceUnit()
         loadDefaultMapApp()
+        loadAppearancePreferences()
     }
     
     // MARK: - Favorites Management
@@ -119,11 +138,38 @@ class UserPreferences: ObservableObject {
         let favorite = FavoritePlace(place: place)
         favorites.append(favorite)
         saveFavorites()
+        
+        // Post notification
+        NotificationCenter.default.post(name: UserPreferences.favoritesChangedNotification, object: self, userInfo: ["placeId": place.placeId])
+    }
+    
+    // Add a minimal favorite entry using just the placeId
+    func addToFavorites(placeId: String) {
+        // Don't add if already a favorite
+        guard !isFavorite(placeId: placeId) else { return }
+        
+        // Create a minimal favorite with just the ID
+        let favorite = FavoritePlace(
+            placeId: placeId,
+            name: "Favorite Place", // Generic name since we don't have the real one
+            timestampAdded: Date()
+        )
+        favorites.append(favorite)
+        saveFavorites()
+        
+        // Log the addition for debugging
+        print("Added minimal favorite with ID: \(placeId)")
+        
+        // Post notification
+        NotificationCenter.default.post(name: UserPreferences.favoritesChangedNotification, object: self, userInfo: ["placeId": placeId])
     }
     
     func removeFavorite(placeId: String) {
         favorites.removeAll { $0.placeId == placeId }
         saveFavorites()
+        
+        // Post notification
+        NotificationCenter.default.post(name: UserPreferences.favoritesChangedNotification, object: self, userInfo: ["placeId": placeId])
     }
     
     func isFavorite(placeId: String) -> Bool {
@@ -168,6 +214,9 @@ class UserPreferences: ObservableObject {
         let newRating = PlaceRating(placeId: placeId, rating: rating)
         ratings.append(newRating)
         saveRatings()
+        
+        // Post notification
+        NotificationCenter.default.post(name: UserPreferences.ratingsChangedNotification, object: self, userInfo: ["placeId": placeId, "rating": rating])
     }
     
     func getRating(for placeId: String) -> Int? {
@@ -248,6 +297,17 @@ class UserPreferences: ObservableObject {
         }
     }
     
+    // MARK: - Appearance Preferences
+    
+    private func loadAppearancePreferences() {
+        useDarkMode = userDefaults.bool(forKey: useDarkModeKey)
+    }
+    
+    func saveAppearancePreferences() {
+        userDefaults.set(useDarkMode, forKey: useDarkModeKey)
+        userDefaults.synchronize()
+    }
+    
     // MARK: - Format Distance
     
     func formatDistance(_ distanceInMeters: Double?) -> String {
@@ -268,6 +328,7 @@ class UserPreferences: ObservableObject {
         hasShownSettingsTooltip = false
         distanceUnit = .miles
         defaultMapApp = "Apple Maps"
+        useDarkMode = false
         
         // Clear all data from UserDefaults
         userDefaults.removeObject(forKey: favoritesKey)
@@ -276,6 +337,8 @@ class UserPreferences: ObservableObject {
         userDefaults.removeObject(forKey: settingsTooltipKey)
         userDefaults.removeObject(forKey: distanceUnitKey)
         userDefaults.removeObject(forKey: defaultMapAppKey)
+        userDefaults.removeObject(forKey: useDarkModeKey)
+        userDefaults.removeObject(forKey: hasSetDarkModeKey)
         userDefaults.synchronize()
         
         // Notify observers
