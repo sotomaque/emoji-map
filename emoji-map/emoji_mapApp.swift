@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-
 @main
 struct emoji_mapApp: App {
     // Use the shared service container - safely accessed on the main thread
@@ -45,12 +44,12 @@ struct emoji_mapApp: App {
                 if isShowingSplash {
                     SplashScreen {
                         // This closure is called when the splash screen animation completes
-                        withAnimation {
+                        withAnimation(.easeOut(duration: 0.5)) {
                             isShowingSplash = false
                         }
                     }
                     .zIndex(1) // Ensure splash screen is on top
-                    .transition(.opacity)
+                    .transition(.opacity) // This makes it fade out when removed
                 }
             }
         }
