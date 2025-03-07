@@ -100,7 +100,7 @@ struct SplashScreen: View {
                 }
             }
         }
-        .opacity(finishedAnimation ? 0.7 : 1)
+        .opacity(finishedAnimation ? 0 : 1)
     }
     
     private func startAnimations() {
