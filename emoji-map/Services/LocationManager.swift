@@ -18,6 +18,7 @@ protocol LocationManagerProtocol: AnyObject {
     func startUpdatingLocation()
     func stopUpdatingLocation()
     func requestLocationAuthorization()
+    func requestLocation()
     func openAppSettings()
 }
 
@@ -94,6 +95,23 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate, Lo
     // Public method to request authorization
     func requestLocationAuthorization() {
         clLocationManager.requestWhenInUseAuthorization()
+    }
+    
+    // Public method to request a one-time location update
+    func requestLocation() {
+        print("Requesting one-time location update")
+        
+        // Set high accuracy for one-time request
+        let originalAccuracy = clLocationManager.desiredAccuracy
+        clLocationManager.desiredAccuracy = kCLLocationAccuracyBest
+        
+        // Request the location
+        clLocationManager.requestLocation()
+        
+        // Reset to original accuracy after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            self?.clLocationManager.desiredAccuracy = originalAccuracy
+        }
     }
     
     // Specific method to request when in use authorization

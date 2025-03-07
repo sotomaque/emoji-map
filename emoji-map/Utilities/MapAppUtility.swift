@@ -52,22 +52,16 @@ class MapAppUtility {
     
     /// Get a list of installed map apps
     /// - Returns: Array of installed MapApp values
-    func getInstalledMapApps() -> [MapApp] {
-        logger.debug("Checking installed map apps")
-        
+    func getInstalledMapApps() -> [MapApp] {        
         var installedApps: [MapApp] = []
         
         for app in MapApp.allCases {
             let canOpen = app.isInstalled
             if canOpen {
                 installedApps.append(app)
-                logger.debug("\(app.rawValue) is installed")
-            } else {
-                logger.debug("\(app.rawValue) is not installed")
             }
         }
         
-        logger.info("Found \(installedApps.count) installed map apps")
         return installedApps
     }
     
@@ -176,8 +170,6 @@ class MapAppUtility {
                         }
                     }
                 } else {
-                    logger.warning("Waze app not installed, redirecting to App Store")
-                    
                     // Open App Store if Waze is not installed
                     if let appStoreURL = URL(string: mapApp.appStoreURL) {
                         DispatchQueue.main.async {

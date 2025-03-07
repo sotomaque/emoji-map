@@ -47,36 +47,6 @@ struct LoadingIndicator: View {
     }
 }
 
-/// A skeleton loading view for images
-//struct SkeletonPhotoView: View {
-//    @State private var isAnimating = false
-//    
-//    var body: some View {
-//        Rectangle()
-//            .fill(
-//                LinearGradient(
-//                    gradient: Gradient(colors: [Color.gray.opacity(0.2), Color.gray.opacity(0.3), Color.gray.opacity(0.2)]),
-//                    startPoint: .leading,
-//                    endPoint: .trailing
-//                )
-//            )
-//            .frame(maxWidth: .infinity, maxHeight: 200)
-//            .overlay(
-//                Rectangle()
-//                    .fill(Color.white.opacity(0.3))
-//                    .offset(x: isAnimating ? 400 : -400)
-//                    .rotationEffect(.degrees(30))
-//                    .frame(width: 100)
-//                    .blur(radius: 8)
-//            )
-//            .onAppear {
-//                withAnimation(Animation.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-//                    isAnimating = true
-//                }
-//            }
-//    }
-//}
-
 // MARK: - Preview
 struct LoadingIndicator_Previews: PreviewProvider {
     static var previews: some View {

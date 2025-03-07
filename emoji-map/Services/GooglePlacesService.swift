@@ -58,6 +58,7 @@ enum NetworkError: Error {
 protocol GooglePlacesServiceProtocol: AnyObject {
     func fetchPlaces(
         center: CLLocationCoordinate2D,
+        region: MKCoordinateRegion?,
         categories: [(emoji: String, name: String, type: String)],
         showOpenNowOnly: Bool,
         completion: @escaping (Result<[Place], NetworkError>) -> Void
@@ -71,9 +72,9 @@ protocol GooglePlacesServiceProtocol: AnyObject {
 }
 
 class GooglePlacesService: GooglePlacesServiceProtocol {
-    private let apiKey = Configuration.googlePlacesAPIKey
-    private let useMockData = Configuration.isUsingMockKey
-    private let mockService = MockGooglePlacesService()
+    private let apiKey: String
+    private let useMockData: Bool
+    private let mockService: MockGooglePlacesService
     
     // Cache instance
     private let cache = NetworkCache.shared
@@ -161,8 +162,16 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
         return urlComponents.url
     }
     
+    // Initializer
+    init() {
+        self.apiKey = Configuration.googlePlacesAPIKey
+        self.useMockData = Configuration.isUsingMockKey
+        self.mockService = MockGooglePlacesService()
+    }
+    
     func fetchPlaces(
         center: CLLocationCoordinate2D,
+        region: MKCoordinateRegion?,
         categories: [(emoji: String, name: String, type: String)],
         showOpenNowOnly: Bool = false,
         completion: @escaping (Result<[Place], NetworkError>) -> Void
@@ -172,7 +181,7 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
         
         // If using mock key, use mock data instead of making real API calls
         if useMockData {
-            mockService.fetchPlaces(center: center, categories: categories, showOpenNowOnly: showOpenNowOnly, completion: completion)
+            mockService.fetchPlaces(center: center, region: region, categories: categories, showOpenNowOnly: showOpenNowOnly, completion: completion)
             return
         }
         
@@ -184,6 +193,30 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
             logger.info("Using cached places for key: \(cacheKey)")
             completion(.success(cachedPlaces))
             return
+        }
+        
+        // Calculate radius based on the region if provided, otherwise use default 5km
+        let radius: Int
+        if let region = region {
+            // Calculate the distance from center to edge of the visible region
+            let centerLocation = CLLocation(latitude: region.center.latitude, longitude: region.center.longitude)
+            let edgeLocation = CLLocation(
+                latitude: region.center.latitude + region.span.latitudeDelta/2,
+                longitude: region.center.longitude + region.span.longitudeDelta/2
+            )
+            
+            // Get the distance in meters and round to nearest 100m
+            let distanceInMeters = Int(centerLocation.distance(from: edgeLocation))
+            
+            // Ensure radius is between 1000m (1km) and 50000m (50km)
+            radius = min(max(distanceInMeters, 1000), 50000)
+            
+            // Log the calculated radius for debugging
+            logger.debug("Calculated search radius: \(radius)m based on map region")
+        } else {
+            // Default radius of 5km if no region provided
+            radius = 5000
+            logger.debug("Using default search radius: \(radius)m")
         }
         
         // Create a new task for this request
@@ -245,7 +278,7 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
                         // Create properly encoded URL using helper method
                         let parameters: [String: String] = [
                             "location": location,
-                            "radius": "5000", // 5km radius
+                            "radius": "\(radius)",
                             "type": placeType,
                             "keyword": keywordList,
                             "key": self.apiKey,

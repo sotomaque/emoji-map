@@ -7,6 +7,99 @@
 
 import SwiftUI
 import MapKit
+import os.log
+
+// Add a custom view modifier to prevent dismissal
+struct PreventDismissModifier: ViewModifier {
+    let isActive: Bool
+    
+    func body(content: Content) -> some View {
+        content
+            .background(PreventDismissView(isActive: isActive))
+    }
+}
+
+// Helper view to prevent dismissal
+struct PreventDismissView: UIViewControllerRepresentable {
+    let isActive: Bool
+    
+    func makeUIViewController(context: Context) -> UIViewController {
+        PreventDismissController(isActive: isActive)
+    }
+    
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        (uiViewController as? PreventDismissController)?.isActive = isActive
+    }
+    
+    class PreventDismissController: UIViewController {
+        var isActive: Bool {
+            didSet {
+                // When isActive changes, update the presentation controller delegate
+                parent?.presentationController?.delegate = self
+                
+                // Log the change for debugging
+                print("PreventDismissController: isActive changed to \(isActive)")
+            }
+        }
+        
+        init(isActive: Bool) {
+            self.isActive = isActive
+            super.init(nibName: nil, bundle: nil)
+        }
+        
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+        
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            // Set the presentation controller delegate
+            parent?.presentationController?.delegate = self
+            
+            // Log for debugging
+            print("PreventDismissController: viewDidLoad, setting delegate")
+        }
+        
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            // Ensure the delegate is set when the view appears
+            parent?.presentationController?.delegate = self
+            
+            // Log for debugging
+            print("PreventDismissController: viewWillAppear, setting delegate")
+        }
+    }
+}
+
+// Extension to make the controller a presentation controller delegate
+extension PreventDismissView.PreventDismissController: UIAdaptivePresentationControllerDelegate {
+    func presentationControllerShouldDismiss(_ presentationController: UIPresentationController) -> Bool {
+        // Only allow dismissal if not active
+        print("PreventDismissController: presentationControllerShouldDismiss called, returning \(!isActive)")
+        return !isActive
+    }
+    
+    // Add this method to handle attempted dismissals
+    func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
+        print("PreventDismissController: presentationControllerDidAttemptToDismiss called")
+        // This is called when the user tries to dismiss but we prevented it
+        // We could add additional logic here if needed
+    }
+    
+    // Add this method to handle dismissal completion
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        print("PreventDismissController: presentationControllerDidDismiss called")
+        // This is called when the sheet is actually dismissed
+        // We could add additional logic here if needed
+    }
+}
+
+// Extension to add the modifier to any view
+extension View {
+    func preventDismissal(when condition: Bool) -> some View {
+        self.modifier(PreventDismissModifier(isActive: condition))
+    }
+}
 
 struct PlaceDetailView: View {
     let place: Place
@@ -14,14 +107,18 @@ struct PlaceDetailView: View {
     @State private var isAppearing = false
     @EnvironmentObject private var mapViewModel: MapViewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var distanceUpdateTimer: Timer?
     @State private var showMapAppActionSheet = false
+    // Add a logger for debugging
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "PlaceDetailView")
+    // Add a flag to track if we're in the process of dismissing
+    @State private var isDismissing = false
     
     // Initialize with the place and create the view model with the shared service
     init(place: Place) {
         self.place = place
-        // Create the view model with a _StateObject wrapper
-        // This ensures the view model is created only once
+        
+        // Use the default initializer which creates a dummy MapViewModel
+        // The real MapViewModel will be set in onAppear from the environment
         _viewModel = StateObject(wrappedValue: PlaceDetailViewModel())
     }
     
@@ -72,7 +169,8 @@ struct PlaceDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: {
-                    dismiss()
+                    logger.debug("🔍 DEBUG: Close button tapped, dismissing sheet")
+                    customDismiss()
                 }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 24))
@@ -103,36 +201,34 @@ struct PlaceDetailView: View {
             }
         )
         .onAppear {
-            // No need to use reflection anymore - the view model will use the shared service
+            logger.debug("🔍 DEBUG: PlaceDetailView.onAppear called for place: \(place.name)")
+            
+            // Update the view model with the MapViewModel from the environment
+            viewModel.updateMapViewModel(mapViewModel)
+            
+            // Fetch details for the place
             viewModel.fetchDetails(for: place)
             
-            // Calculate distance from user
+            // Calculate distance from user once (static)
             viewModel.calculateDistanceFromUser(place: place, userLocation: mapViewModel.locationManager.location)
-            
-            // Set up a timer to update the distance periodically
-            distanceUpdateTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
-                updateDistance()
-            }
             
             // Slight delay before showing content for smoother transition
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 isAppearing = true
             }
+            
+            logger.debug("🔍 DEBUG: PlaceDetailView.onAppear completed")
         }
         .onDisappear {
-            // Ensure we don't lose the favorite status when the view disappears
-            // This prevents the bug where closing the view removes the place from favorites
-            if viewModel.isFavorite {
-                // Make sure the place stays favorited in both view models
-                mapViewModel.objectWillChange.send()
+            logger.debug("🔍 DEBUG: PlaceDetailView.onDisappear called, isDismissing: \(isDismissing)")
+            
+            // Only process dismissal if it's an intentional dismissal
+            if isDismissing {
+                // Notify the view model that the view is disappearing
+                viewModel.onViewDisappear()
             }
             
-            // Notify the view model that the view is disappearing
-            viewModel.onViewDisappear()
-            
-            // Invalidate the timer when the view disappears
-            distanceUpdateTimer?.invalidate()
-            distanceUpdateTimer = nil
+            logger.debug("🔍 DEBUG: PlaceDetailView.onDisappear completed")
         }
         .alert(isPresented: $viewModel.showError, content: {
             Alert(
@@ -144,24 +240,38 @@ struct PlaceDetailView: View {
                 secondaryButton: .cancel()
             )
         })
-    }
-    
-    // Method to update the distance from the user to the place
-    private func updateDistance() {
-        viewModel.updateDistanceFromUser(place: place, userLocation: mapViewModel.locationManager.location)
+        // Add presentation detents to control the sheet size
+        .presentationDetents([.large])
+        // Always prevent interactive dismissal to avoid accidental dismissals
+        .interactiveDismissDisabled(true)
+        // Add a custom presentation background to prevent touches from passing through
+        .presentationBackground {
+            Color(.systemGroupedBackground)
+                .opacity(0.98)
+        }
+        // Always prevent dismissal to ensure only our customDismiss method can dismiss the sheet
+        .preventDismissal(when: true) // Always prevent dismissal
     }
     
     private func toggleFavorite() {
-        // First update the MapViewModel to ensure the place is properly added/removed from favorites
-        mapViewModel.toggleFavorite(for: place)
+        logger.debug("🔍 DEBUG: toggleFavorite called for place: \(place.name)")
         
-        // Then update our local ViewModel to stay in sync
-        viewModel.setFavorite(place, isFavorite: mapViewModel.isFavorite(placeId: place.placeId))
+        // Toggle favorite directly in the view model
+        viewModel.toggleFavorite()
         
         // Provide haptic feedback
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.prepare()
         generator.impactOccurred()
+        
+        logger.debug("🔍 DEBUG: Favorite status updated")
+    }
+    
+    // Add a custom dismiss action to control when the sheet is dismissed
+    private func customDismiss() {
+        logger.debug("🔍 DEBUG: customDismiss called, setting isDismissing to true")
+        isDismissing = true
+        dismiss()
     }
     
     // MARK: - Subviews
@@ -310,19 +420,32 @@ struct PlaceDetailView: View {
                 .font(.system(size: 16, weight: .medium))
                 .foregroundColor(.primary)
             
+            // Add a debug text to show the current rating value
+            #if DEBUG
+            Text("Current rating: \(viewModel.userRating)")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+            #endif
+            
             StarRatingView(
                 rating: viewModel.userRating,
                 size: 30,
                 isInteractive: true,
                 onRatingChanged: { rating in
+                    logger.debug("🔍 DEBUG: onRatingChanged called with rating: \(rating)")
+                    
+                    // Update rating directly in the view model
                     viewModel.ratePlace(rating: rating)
-                    // Also update in the map view model to keep state in sync
-                    mapViewModel.ratePlace(placeId: place.placeId, rating: rating)
                     
                     // Provide haptic feedback
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.prepare()
                     generator.impactOccurred()
+                    
+                    // Show notification
+                    mapViewModel.showNotificationMessage("Rating saved")
+                    
+                    logger.debug("🔍 DEBUG: Rating updated to: \(rating)")
                 }
             )
             .padding(.vertical, 4)
@@ -356,6 +479,7 @@ struct PlaceDetailView: View {
                     backgroundColor: Color.blue.opacity(0.1),
                     hasBorder: true,
                     action: {
+                        logger.debug("🔍 DEBUG: View on Map button tapped")
                         // Use the default map app to view the location
                         let defaultMapAppName = mapViewModel.preferences.defaultMapApp
                         let installedApps = MapAppUtility.shared.getInstalledMapApps()
@@ -378,7 +502,8 @@ struct PlaceDetailView: View {
                         }
                         
                         // Dismiss the sheet after launching the map app
-                        dismiss()
+                        logger.debug("🔍 DEBUG: Dismissing sheet after launching map app")
+                        customDismiss()
                     }
                 )
                 .disabled(viewModel.isLoading)
@@ -394,72 +519,12 @@ struct PlaceDetailView: View {
                                 coordinate: place.coordinate,
                                 name: place.name
                             )
-                            dismiss()
+                            customDismiss()
                         } label: {
                             Label(app.rawValue, systemImage: "map.fill")
                         }
                     }
                 }
-            }
-            
-            // Directions button
-            ActionButton(
-                title: "Get Directions",
-                icon: "location.fill",
-                foregroundColor: .white,
-                backgroundColor: .green,
-                action: {
-                    // Check if we should use the default map app or show options
-                    let defaultMapAppName = mapViewModel.preferences.defaultMapApp
-                    let installedApps = MapAppUtility.shared.getInstalledMapApps()
-                    
-                    // Find the default map app
-                    if let defaultApp = installedApps.first(where: { $0.rawValue == defaultMapAppName }) {
-                        // Use the default map app
-                        MapAppUtility.shared.openInMapApp(
-                            mapApp: defaultApp,
-                            coordinate: place.coordinate,
-                            name: place.name
-                        )
-                    } else {
-                        // Show action sheet to select map app
-                        showMapAppActionSheet = true
-                    }
-                }
-            )
-            .disabled(viewModel.isLoading)
-            .opacity(viewModel.isLoading ? 0.7 : 1.0)
-            .contextMenu {
-                // Context menu to choose a different map app
-                Text("Open with...")
-                
-                ForEach(MapAppUtility.shared.getInstalledMapApps()) { app in
-                    Button {
-                        MapAppUtility.shared.openInMapApp(
-                            mapApp: app,
-                            coordinate: place.coordinate,
-                            name: place.name
-                        )
-                    } label: {
-                        Label(app.rawValue, systemImage: "location.fill")
-                    }
-                }
-            }
-            .confirmationDialog("Open in Maps", isPresented: $showMapAppActionSheet, titleVisibility: .visible) {
-                // Get installed map apps
-                ForEach(MapAppUtility.shared.getInstalledMapApps()) { app in
-                    Button(app.rawValue) {
-                        MapAppUtility.shared.openInMapApp(
-                            mapApp: app,
-                            coordinate: place.coordinate,
-                            name: place.name
-                        )
-                    }
-                }
-                
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Choose a map app to get directions to \(place.name)")
             }
         }
         .padding(.horizontal)

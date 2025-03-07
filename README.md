@@ -100,45 +100,18 @@ cd emoji-map
 open emoji-map.xcodeproj
 ```
 
-3. Set up your Google Places API key in Xcode
+3. Configure API Keys
 
-   - In Xcode, select your project in the Project Navigator
-   - Select your app target
-   - Go to the "Edit Scheme" option (Product > Scheme > Edit Scheme)
-   - Select the "Run" action
-   - Go to the "Arguments" tab
-   - Under "Environment Variables", add "GOOGLE_PLACES_API_KEY" with your API key
+Before running the app, you need to set up your Google Places API key. See the [Configuration Guide](CONFIGURATION.md) for detailed instructions.
 
 4. Build and run the application
-
-## Environment Variables
-
-The app uses environment variables to securely manage API keys:
-
-### Local Development
-
-1. Set up environment variables in your Xcode scheme as described above
-2. These variables will be available to the app when running in the simulator or on a device from Xcode
-
-### CI/CD and Production
-
-For Xcode Cloud or other CI/CD systems:
-
-1. Add the `GOOGLE_PLACES_API_KEY` environment variable to your build configuration
-2. Mark it as a secret to ensure it's not exposed in logs
-
-### Security
-
-- API keys are never stored in the app bundle
-- Keys are read directly from the environment at runtime
-- This approach prevents users from extracting your API keys from the app
 
 ## Configuration
 
 The app uses a flexible configuration system to manage API keys and settings:
 
 - **Environment Variables**: Primary source for API keys
-- **Keychain Storage**: Secure storage for production use
+- **.env File**: Local development configuration
 
 For detailed configuration instructions, see the [Configuration Guide](CONFIGURATION.md).
 
@@ -201,7 +174,7 @@ The app implements proper thread synchronization:
 If you encounter issues with the app:
 
 1. Check the [Configuration Guide](CONFIGURATION.md) for API key setup
-2. Ensure the API key is correctly set in your Xcode scheme
+2. Ensure all required environment variables are set
 3. Clean the build folder and rebuild the project
 4. Check the console for detailed error messages
 

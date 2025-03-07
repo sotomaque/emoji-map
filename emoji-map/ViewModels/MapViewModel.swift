@@ -8,10 +8,15 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import os.log
+import Combine
 
 // Thread-safe actor for managing shared state
 @MainActor
 class MapViewModel: ObservableObject {
+    // Add a logger for debugging
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "MapViewModel")
+    
     let categories = [
         ("🍕", "pizza", "restaurant"),
         ("🍺", "beer", "bar"),
@@ -65,8 +70,14 @@ class MapViewModel: ObservableObject {
     private let userPreferences: UserPreferences
     private var shouldCenterOnLocation = true
     
+    // Add a cancellable for the notification subscription
+    private var updateSubscription: AnyCancellable?
+    
     // Make locationManager accessible to other views
     let locationManager: LocationManager
+    
+    // Add a reference to the cache
+    private let cache = NetworkCache.shared
     
     // Public getter for userPreferences
     var preferences: UserPreferences {
@@ -112,10 +123,13 @@ class MapViewModel: ObservableObject {
         // Start with all places
         var filtered = places
         
+        // Get a direct reference to UserPreferences to ensure we have the latest data
+        let userPrefs = ServiceContainer.shared.userPreferences
+        
         // Filter by favorites if enabled
         if showFavoritesOnly {
             filtered = filtered.filter { place in
-                userPreferences.isFavorite(placeId: place.placeId)
+                userPrefs.isFavorite(placeId: place.placeId)
             }
         }
         
@@ -148,7 +162,7 @@ class MapViewModel: ObservableObject {
             if useLocalRatings {
                 // Use local user ratings
                 filtered = filtered.filter { place in
-                    if let rating = userPreferences.getRating(for: place.placeId) {
+                    if let rating = userPrefs.getRating(for: place.placeId) {
                         return rating >= minimumRating
                     }
                     return false // Exclude places with no local rating if minimum rating is set
@@ -168,11 +182,13 @@ class MapViewModel: ObservableObject {
     }
     
     init(
-        googlePlacesService: GooglePlacesServiceProtocol,
-        userPreferences: UserPreferences = UserPreferences()
+        googlePlacesService: GooglePlacesServiceProtocol? = nil,
+        userPreferences: UserPreferences? = nil
     ) {
-        self.googlePlacesService = googlePlacesService
-        self.userPreferences = userPreferences
+        // Use the provided service or get the shared instance from ServiceContainer
+        self.googlePlacesService = googlePlacesService ?? ServiceContainer.shared.googlePlacesService
+        // Use the provided userPreferences or get the shared instance from ServiceContainer
+        self.userPreferences = userPreferences ?? ServiceContainer.shared.userPreferences
         self.locationManager = LocationManager()
         
         // Set default coordinate (San Francisco)
@@ -204,9 +220,12 @@ class MapViewModel: ObservableObject {
         // Setup location updates
         setupLocationUpdates()
         
+        // Subscribe to update notifications
+        setupNotificationSubscription()
+        
         // Debug: Print current favorites on initialization
         print("MapViewModel initialized")
-        userPreferences.printFavorites()
+        userPreferences?.printFavorites()
     }
     
     private func checkConfiguration() {
@@ -282,6 +301,16 @@ class MapViewModel: ObservableObject {
             // Request authorization if not determined
             locationManager.requestWhenInUseAuthorization()
         }
+    }
+    
+    private func setupNotificationSubscription() {
+        // Subscribe to the update notification
+        updateSubscription = NotificationCenter.default.publisher(for: Notification.Name("ServiceContainer.updateAllViewModels"))
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                // Force UI refresh
+                self?.objectWillChange.send()
+            }
     }
     
     func toggleCategory(_ category: String) {
@@ -403,49 +432,136 @@ class MapViewModel: ObservableObject {
     }
     
     func isFavorite(placeId: String) -> Bool {
-        return userPreferences.isFavorite(placeId: placeId)
+        // Get a direct reference to UserPreferences to ensure we have the latest data
+        let userPrefs = ServiceContainer.shared.userPreferences
+        
+        return userPrefs.isFavorite(placeId: placeId)
     }
     
-    func toggleFavorite(for place: Place) {
-        let wasAlreadyFavorite = userPreferences.isFavorite(placeId: place.placeId)
+    func addFavorite(_ place: Place) {
+        // Get direct reference to UserPreferences
+        let userPrefs = ServiceContainer.shared.userPreferences
         
-        if wasAlreadyFavorite {
-            userPreferences.removeFavorite(placeId: place.placeId)
-        } else {
-            userPreferences.addFavorite(place)
-        }
+        // Add to favorites
+        userPrefs.addFavorite(place)
         
         // Debug: Print favorites after change
-        print("After toggling favorite for \(place.name):")
-        userPreferences.printFavorites()
+        print("After adding favorite for \(place.name):")
+        userPrefs.printFavorites()
         
         // Trigger UI update
         objectWillChange.send()
         
         // Provide haptic feedback
-        if wasAlreadyFavorite {
-            HapticsManager.shared.mediumImpact(intensity: 0.7)
-        } else {
-            HapticsManager.shared.successSequence()
-        }
+        HapticsManager.shared.successSequence()
         
         // Show notification to confirm action
-        let actionType = wasAlreadyFavorite ? "removed from" : "added to"
-        showNotificationMessage("\(place.name) \(actionType) favorites")
+        showNotificationMessage("\(place.name) added to favorites")
     }
     
-    func getRating(for placeId: String) -> Int? {
-        // Only return the user's local rating
-        return userPreferences.getRating(for: placeId)
-    }
-    
-    func ratePlace(placeId: String, rating: Int) {
-        userPreferences.ratePlace(placeId: placeId, rating: rating)
+    func removeFavorite(placeId: String) {
+        // Get direct reference to UserPreferences
+        let userPrefs = ServiceContainer.shared.userPreferences
+        
+        // Get the place name for the notification
+        let placeName = places.first(where: { $0.placeId == placeId })?.name ?? "Place"
+        
+        // Remove from favorites
+        userPrefs.removeFavorite(placeId: placeId)
+        
+        // Debug: Print favorites after change
+        print("After removing favorite for \(placeName):")
+        userPrefs.printFavorites()
+        
         // Trigger UI update
         objectWillChange.send()
         
+        // Provide haptic feedback
+        HapticsManager.shared.mediumImpact(intensity: 0.7)
+        
         // Show notification to confirm action
-        showNotificationMessage("Rating saved")
+        showNotificationMessage("\(placeName) removed from favorites")
+    }
+    
+    func toggleFavorite(for place: Place) {
+        // Get direct reference to UserPreferences
+        let userPrefs = ServiceContainer.shared.userPreferences
+        
+        let wasAlreadyFavorite = userPrefs.isFavorite(placeId: place.placeId)
+        
+        // Update UserPreferences directly
+        if wasAlreadyFavorite {
+            removeFavorite(placeId: place.placeId)
+        } else {
+            addFavorite(place)
+        }
+    }
+    
+    func getRating(for placeId: String) -> Int? {
+        // Get a direct reference to UserPreferences to ensure we have the latest data
+        let userPrefs = ServiceContainer.shared.userPreferences
+        
+        // Only return the user's local rating
+        return userPrefs.getRating(for: placeId)
+    }
+    
+    func ratePlace(placeId: String, rating: Int) {
+        logger.info("📝 INFO: MapViewModel.ratePlace called for placeId: \(placeId) with rating: \(rating)")
+        
+        // Get direct reference to UserPreferences
+        let userPrefs = ServiceContainer.shared.userPreferences
+        
+        // Update UserPreferences directly
+        userPrefs.ratePlace(placeId: placeId, rating: rating)
+        
+        // Trigger UI update
+        objectWillChange.send()
+        
+        logger.info("📝 INFO: MapViewModel.ratePlace completed")
+    }
+    
+    // Helper method to save the current filter state
+    private func saveCurrentFilterState() -> [String: Any] {
+        return [
+            "selectedCategories": Array(selectedCategories),
+            "isAllCategoriesMode": isAllCategoriesMode,
+            "showFavoritesOnly": showFavoritesOnly,
+            "selectedPriceLevels": Array(selectedPriceLevels),
+            "showOpenNowOnly": showOpenNowOnly,
+            "minimumRating": minimumRating,
+            "useLocalRatings": useLocalRatings
+        ]
+    }
+    
+    // Helper method to restore the filter state
+    private func restoreFilterState(_ state: [String: Any]) {
+        if let selectedCategories = state["selectedCategories"] as? [String] {
+            self.selectedCategories = Set(selectedCategories)
+        }
+        
+        if let isAllCategoriesMode = state["isAllCategoriesMode"] as? Bool {
+            self.isAllCategoriesMode = isAllCategoriesMode
+        }
+        
+        if let showFavoritesOnly = state["showFavoritesOnly"] as? Bool {
+            self.showFavoritesOnly = showFavoritesOnly
+        }
+        
+        if let selectedPriceLevels = state["selectedPriceLevels"] as? [Int] {
+            self.selectedPriceLevels = Set(selectedPriceLevels)
+        }
+        
+        if let showOpenNowOnly = state["showOpenNowOnly"] as? Bool {
+            self.showOpenNowOnly = showOpenNowOnly
+        }
+        
+        if let minimumRating = state["minimumRating"] as? Int {
+            self.minimumRating = minimumRating
+        }
+        
+        if let useLocalRatings = state["useLocalRatings"] as? Bool {
+            self.useLocalRatings = useLocalRatings
+        }
     }
     
     func onRegionChange(newCenter: CoordinateWrapper) {
@@ -473,7 +589,7 @@ class MapViewModel: ObservableObject {
         // Hide the search button
         showSearchHereButton = false
         
-        // Fetch places at the new location with a 5km radius
+        // Fetch places at the new location with a dynamic radius based on the current viewport
         Task { @MainActor [weak self] in
             guard let self = self else { return }
             try await self.fetchAndUpdatePlaces()
@@ -484,94 +600,123 @@ class MapViewModel: ObservableObject {
     }
     
     func onAppear() {
+        // Request a fresh location update
+        locationManager.requestLocation()
+        
         // Try to use the user's location if available
-        if let userLocation = locationManager.location {
-            print("User location found: \(userLocation.coordinate)")
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
             
-            // Create a new region centered on the user's location
-            let newRegion = MKCoordinateRegion(
-                center: userLocation.coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-            )
+            // Wait a short time for location to update
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
             
-            // Update the region - this will trigger the onChange handler in ContentView
-            self.region = newRegion
-            
-            // Notify about region change
-            onRegionDidChange?(newRegion)
-            
-            // Update the last queried center to match the new region
-            lastQueriedCenter = CoordinateWrapper(userLocation.coordinate)
-            
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
+            if let userLocation = locationManager.location {
+                print("User location found: \(userLocation.coordinate)")
+                
+                // Create a new region centered on the user's location
+                let newRegion = MKCoordinateRegion(
+                    center: userLocation.coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                )
+                
+                // Update the region - this will trigger the onChange handler in ContentView
+                self.region = newRegion
+                
+                // Notify about region change
+                onRegionDidChange?(newRegion)
+                
+                // Update the last queried center to match the new region
+                lastQueriedCenter = CoordinateWrapper(userLocation.coordinate)
+                
                 try await self.fetchAndUpdatePlaces()
                 self.shouldCenterOnLocation = false
-            }
-            
-            // Explicitly trigger UI update
-            objectWillChange.send()
-        } else {
-            print("User location not available, using default location")
-            // Request location authorization if not determined yet
-            if locationManager.authorizationStatus == .notDetermined {
-                locationManager.requestWhenInUseAuthorization()
-            } else if locationManager.authorizationStatus == .authorizedWhenInUse || 
-                      locationManager.authorizationStatus == .authorizedAlways {
-                // Start location updates to get the current location
-                locationManager.startUpdatingLocation()
-            }
-            
-            // Fetch places at the default location
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
+                
+                // Explicitly trigger UI update
+                objectWillChange.send()
+            } else {
+                print("User location not available, using default location")
+                // Request location authorization if not determined yet
+                if locationManager.authorizationStatus == .notDetermined {
+                    locationManager.requestWhenInUseAuthorization()
+                } else if locationManager.authorizationStatus == .authorizedWhenInUse || 
+                          locationManager.authorizationStatus == .authorizedAlways {
+                    // Start location updates to get the current location
+                    locationManager.startUpdatingLocation()
+                }
+                
+                // Fetch places at the default location
                 try await self.fetchAndUpdatePlaces()
             }
         }
     }
     
     func recenterMap() {
-        if let userLocation = locationManager.location {
-            // Provide haptic feedback
-            HapticsManager.shared.mediumImpact()
+        // Force refresh location before centering
+        locationManager.requestLocation()
+        
+        // Show a loading notification
+        showNotificationMessage("Finding your location...")
+        
+        // Provide haptic feedback for the request
+        HapticsManager.shared.lightImpact()
+        
+        // Use a task to wait for location update
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
             
-            print("Recentering map to user location: \(userLocation.coordinate)")
+            // Wait a short time for location to update
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
             
-            // Update the region to the user's location
-            let newRegion = MKCoordinateRegion(
-                center: userLocation.coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-            )
-            
-            // Update the region - this will trigger the onChange handler in ContentView
-            self.region = newRegion
-            
-            // Notify about region change
-            onRegionDidChange?(newRegion)
-            
-            // Update the last queried center to match the new region
-            lastQueriedCenter = CoordinateWrapper(userLocation.coordinate)
-            
-            // Hide the search button since we're at the user's location
-            showSearchHereButton = false
-            
-            // Fetch places at the new location
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
+            if let userLocation = locationManager.location {
+                // Provide haptic feedback for success
+                HapticsManager.shared.mediumImpact()
+                
+                print("Recentering map to user location: \(userLocation.coordinate)")
+                
+                // Update the region to the user's location with a closer zoom level
+                let newRegion = MKCoordinateRegion(
+                    center: userLocation.coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                )
+                
+                // Update the region - this will trigger the onChange handler in ContentView
+                self.region = newRegion
+                
+                // Notify about region change
+                onRegionDidChange?(newRegion)
+                
+                // Update the last queried center to match the new region
+                lastQueriedCenter = CoordinateWrapper(userLocation.coordinate)
+                
+                // Hide the search button since we're at the user's location
+                showSearchHereButton = false
+                
+                // Fetch places at the new location
                 try await self.fetchAndUpdatePlaces()
+                
+                // Show notification
+                showNotificationMessage("Centered on your location")
+                
+                // Explicitly trigger UI update
+                objectWillChange.send()
+            } else {
+                // Provide error feedback if location is not available
+                HapticsManager.shared.errorSequence()
+                
+                // Request location authorization if not determined yet
+                if locationManager.authorizationStatus == .notDetermined {
+                    locationManager.requestWhenInUseAuthorization()
+                    showNotificationMessage("Requesting location access...")
+                } else if locationManager.authorizationStatus == .authorizedWhenInUse || 
+                          locationManager.authorizationStatus == .authorizedAlways {
+                    // Start location updates to get the current location
+                    locationManager.startUpdatingLocation()
+                    showNotificationMessage("Finding your location...")
+                } else {
+                    // Show notification
+                    showNotificationMessage("Unable to find your location")
+                }
             }
-            
-            // Show notification
-            showNotificationMessage("Centered on your location")
-            
-            // Explicitly trigger UI update
-            objectWillChange.send()
-        } else {
-            // Provide error feedback if location is not available
-            HapticsManager.shared.errorSequence()
-            
-            // Show notification
-            showNotificationMessage("Unable to find your location")
         }
     }
     
@@ -658,6 +803,7 @@ class MapViewModel: ObservableObject {
         return try await withCheckedThrowingContinuation { continuation in
             googlePlacesService.fetchPlaces(
                 center: center,
+                region: self.region,
                 categories: categories,
                 showOpenNowOnly: showOpenNowOnly,
                 completion: { result in
@@ -700,10 +846,10 @@ class MapViewModel: ObservableObject {
         notificationMessage = message
         showNotification = true
         
-        // Hide notification after 5 seconds
+        // Hide notification after 10 seconds
         Task { @MainActor [weak self] in
             guard let self = self else { return }
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
             if self.notificationMessage == message {
                 self.showNotification = false
             }
@@ -836,6 +982,45 @@ class MapViewModel: ObservableObject {
     
     // Cancel all pending requests when the view model is deallocated
     deinit {
+        // Cancel the subscription when the view model is deallocated
+        updateSubscription?.cancel()
+        
+        // Cancel all pending requests when the view model is deallocated
         (googlePlacesService as? GooglePlacesService)?.cancelPlacesRequests()    
+    }
+    
+    // New method to refresh places by clearing the cache and fetching fresh data
+    func refreshPlaces() {
+        // Clear the cache
+        cache.clearPlacesCache()
+        
+        // Fetch fresh data
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            try await self.fetchAndUpdatePlaces()
+        }
+        
+        // Show notification
+        showNotificationMessage("Refreshing places...")
+    }
+    
+    // New method to refresh filtered places without fetching new data
+    func refreshFilteredPlaces() {
+        logger.info("📝 INFO: Refreshing filtered places after favorite/rating changes")
+        
+        // Force UI refresh to update filtered places
+        objectWillChange.send()
+        
+        // If we're showing favorites only, we need to ensure the UI updates
+        if showFavoritesOnly {
+            // Show notification to confirm the update
+            showNotificationMessage("Favorites updated")
+        }
+        
+        // If we're filtering by ratings, we need to ensure the UI updates
+        if minimumRating > 0 && useLocalRatings {
+            // Show notification to confirm the update
+            showNotificationMessage("Ratings updated")
+        }
     }
 }

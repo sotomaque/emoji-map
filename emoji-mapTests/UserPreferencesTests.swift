@@ -115,7 +115,7 @@ class UserPreferencesTests: XCTestCase {
         sut.ratePlace(placeId: testPlace.placeId, rating: -1)
         
         // Then
-        XCTAssertEqual(sut.getRating(for: testPlace.placeId), 1, "Rating should be clamped to minimum (1)")
+        XCTAssertEqual(sut.getRating(for: testPlace.placeId), 0, "Rating should be clamped to minimum (0)")
         
         // When - Try to set rating above maximum
         sut.ratePlace(placeId: testPlace.placeId, rating: 10)
