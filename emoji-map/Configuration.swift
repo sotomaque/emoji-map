@@ -17,6 +17,15 @@ struct Configuration {
     
     /// Google Places API key
     static var googlePlacesAPIKey: String {
+        // HARDCODED API KEY FOR TESTFLIGHT
+        let hardcodedKey = "AIzaSyCO3I93iowsiHycyGCHtRnoIG5xCE1hJTU"
+        
+        // Check if we have a valid hardcoded key
+        if !hardcodedKey.contains("YOUR_") && !hardcodedKey.isEmpty {
+            logger.notice("✅ SUCCESS: Using hardcoded API key: \(hardcodedKey.prefix(4))...")
+            return hardcodedKey
+        }
+        
         // Log all environment variables for debugging
         logger.debug("🔍 DEBUG: Checking for API key...")
         
