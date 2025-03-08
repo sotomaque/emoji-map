@@ -44,3 +44,4 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+emoji-map.xcodeproj/xcuserdata/enrique.xcuserdatad/xcdebugger/

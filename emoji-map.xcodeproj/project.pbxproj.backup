@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CD9A120B2D7836EC0023EDF2 /* ViewInspector in Frameworks */ = {isa = PBXBuildFile; productRef = CD9A120A2D7836EC0023EDF2 /* ViewInspector */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		CD12CBEB2D7522C200EFAD77 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,16 +25,6 @@
 		CD12CBEA2D7522C200EFAD77 /* emoji-mapTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "emoji-mapTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		CD5D6F902D7C07FB00C0A751 /* Exceptions for "emoji-mapTests" folder in "emoji-mapTests" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = CD12CBE92D7522C200EFAD77 /* emoji-mapTests */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		CD12CBDC2D7522BB00EFAD77 /* emoji-map */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -39,9 +33,6 @@
 		};
 		CD12CBED2D7522C200EFAD77 /* emoji-mapTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				CD5D6F902D7C07FB00C0A751 /* Exceptions for "emoji-mapTests" folder in "emoji-mapTests" target */,
-			);
 			path = "emoji-mapTests";
 			sourceTree = "<group>";
 		};
@@ -59,6 +50,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CD9A120B2D7836EC0023EDF2 /* ViewInspector in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -100,7 +92,7 @@
 			buildPhases = (
 				CD12CBD62D7522BB00EFAD77 /* Sources */,
 				CD12CBD72D7522BB00EFAD77 /* Frameworks */,
-				CD9A18262D7A1E800023EDF2 /* Run Script */,
+				CD9A18262D7A1E800023EDF2 /* ShellScript */,
 				CD12CBD82D7522BB00EFAD77 /* Resources */,
 			);
 			buildRules = (
@@ -135,6 +127,7 @@
 			);
 			name = "emoji-mapTests";
 			packageProductDependencies = (
+				CD9A120A2D7836EC0023EDF2 /* ViewInspector */,
 			);
 			productName = "emoji-mapTests";
 			productReference = CD12CBEA2D7522C200EFAD77 /* emoji-mapTests.xctest */;
@@ -169,6 +162,7 @@
 			mainGroup = CD12CBD12D7522BB00EFAD77;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				CD9A12042D7835400023EDF2 /* XCRemoteSwiftPackageReference "ViewInspector" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CD12CBDB2D7522BB00EFAD77 /* Products */;
@@ -199,7 +193,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		CD9A18262D7A1E800023EDF2 /* Run Script */ = {
+		CD9A18262D7A1E800023EDF2 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -208,7 +202,6 @@
 			);
 			inputPaths = (
 			);
-			name = "Run Script";
 			outputFileListPaths = (
 			);
 			outputPaths = (
@@ -507,6 +500,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CD9A12042D7835400023EDF2 /* XCRemoteSwiftPackageReference "ViewInspector" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/nalexn/ViewInspector";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.10.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CD9A120A2D7836EC0023EDF2 /* ViewInspector */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CD9A12042D7835400023EDF2 /* XCRemoteSwiftPackageReference "ViewInspector" */;
+			productName = ViewInspector;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CD12CBD22D7522BB00EFAD77 /* Project object */;
 }

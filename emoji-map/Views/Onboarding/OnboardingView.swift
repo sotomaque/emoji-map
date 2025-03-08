@@ -106,7 +106,7 @@ struct OnboardingView: View, OnboardingSlideDelegate {
                                 if isFromSettings {
                                     dismiss()
                                 } else {
-                                    userPreferences.completeOnboarding()
+                                    userPreferences.markOnboardingAsCompleted()
                                 }
                             }
                         }) {
@@ -137,7 +137,7 @@ struct OnboardingView: View, OnboardingSlideDelegate {
                     }
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                .onChange(of: currentPage) { _ in
+                .onChange(of: currentPage) { oldValue, newValue in
                     // Provide haptic feedback on page change
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.impactOccurred()
@@ -217,7 +217,7 @@ struct OnboardingView: View, OnboardingSlideDelegate {
                                     if isFromSettings {
                                         dismiss()
                                     } else {
-                                        userPreferences.completeOnboarding()
+                                        userPreferences.markOnboardingAsCompleted()
                                     }
                                 }
                             }
@@ -322,7 +322,7 @@ struct EasterEggModifier: ViewModifier {
                     NotificationCenter.default.post(name: NSNotification.Name("ActivateEasterEgg"), object: nil)
                 }
             }
-            .onChange(of: isActive) { newValue in
+            .onChange(of: isActive) { oldValue, newValue in
                 if newValue {
                     // Find the EmojiParticleView and activate easter egg
                     NotificationCenter.default.post(name: NSNotification.Name("ActivateEasterEgg"), object: nil)

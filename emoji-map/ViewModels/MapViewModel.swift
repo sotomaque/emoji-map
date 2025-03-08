@@ -66,7 +66,10 @@ class MapViewModel: ObservableObject {
     @Published var useLocalRatings: Bool = false // Whether to use local ratings instead of Google ratings
     @Published var showFilters: Bool = false // Controls filter sheet visibility
     
-    private let googlePlacesService: GooglePlacesServiceProtocol
+    // Add this property near the top of the class with other @Published properties
+    @Published var newPlacesLoaded = false
+    
+    private let backendService: BackendService
     private let userPreferences: UserPreferences
     private var shouldCenterOnLocation = true
     
@@ -134,9 +137,36 @@ class MapViewModel: ObservableObject {
         }
         
         // Filter by categories
-        if !selectedCategories.isEmpty {
+        if !selectedCategories.isEmpty && !isAllCategoriesMode {
             filtered = filtered.filter { place in
-                selectedCategories.contains(place.category)
+                // If the category is empty, include it in all categories
+                if place.category.isEmpty {
+                    logger.debug("Including place with empty category: \(place.name)")
+                    return true
+                }
+                
+                // Check if the category matches any of the selected categories
+                let matches = selectedCategories.contains(place.category)
+                
+                // If it doesn't match directly, check if it's a partial match
+                // This helps with cases where the backend might return a more specific category
+                // than what we have in our selected categories
+                if !matches {
+                    // Check if any selected category is a substring of the place's category
+                    // or if the place's category is a substring of any selected category
+                    let partialMatches = selectedCategories.contains { selectedCategory in
+                        place.category.contains(selectedCategory) || selectedCategory.contains(place.category)
+                    }
+                    
+                    if partialMatches {
+                        logger.debug("Including place \(place.name) with partial category match: '\(place.category)'")
+                        return true
+                    }
+                    
+                    logger.debug("Filtering out place \(place.name) with category '\(place.category)' - not in selected categories")
+                }
+                
+                return matches
             }
         }
         
@@ -181,12 +211,22 @@ class MapViewModel: ObservableObject {
         return filtered
     }
     
+    // Debounce mechanism for fetch requests
+    private var fetchDebounceTask: Task<Void, Never>?
+    private var lastFetchTime: Date = Date.distantPast
+    private var isFetchingPlaces: Bool = false
+    private let fetchDebounceInterval: TimeInterval = 1.0 // 1 second debounce
+    
+    // Add a new property to store the "all categories" cache
+    private var allCategoriesCache: [Place] = []
+    private var lastCachedCenter: CoordinateWrapper?
+    
     init(
-        googlePlacesService: GooglePlacesServiceProtocol? = nil,
+        backendService: BackendService? = nil,
         userPreferences: UserPreferences? = nil
     ) {
         // Use the provided service or get the shared instance from ServiceContainer
-        self.googlePlacesService = googlePlacesService ?? ServiceContainer.shared.googlePlacesService
+        self.backendService = backendService ?? ServiceContainer.shared.backendService
         // Use the provided userPreferences or get the shared instance from ServiceContainer
         self.userPreferences = userPreferences ?? ServiceContainer.shared.userPreferences
         self.locationManager = LocationManager()
@@ -208,9 +248,6 @@ class MapViewModel: ObservableObject {
         // Initialize isAllCategoriesMode to true since we're starting with all categories selected
         self.isAllCategoriesMode = true
         
-        // Check for configuration issues
-        checkConfiguration()
-        
         // Explicitly request location authorization if not determined
         if locationManager.authorizationStatus == .notDetermined {
             print("Requesting location authorization during initialization")
@@ -228,12 +265,6 @@ class MapViewModel: ObservableObject {
         userPreferences?.printFavorites()
     }
     
-    private func checkConfiguration() {
-        if Configuration.isUsingMockKey {
-            showConfigWarning = true
-            configWarningMessage = "Using mock API key. Data shown is not from real API."
-        }
-    }
     
     private func setupLocationUpdates() {
         // Listen for authorization status changes
@@ -255,16 +286,21 @@ class MapViewModel: ObservableObject {
             }
         }
         
+        // Track if we've already processed a location update
+        var initialLocationProcessed = false
+        
         // Ensure location updates are handled on the main actor
         locationManager.onLocationUpdate = { [weak self] location in
             guard let self = self else { return }
             
             print("Received location update: \(location.coordinate)")
             
-            // Since we're using @MainActor, this will be dispatched to the main thread
-            if self.shouldCenterOnLocation {
-                print("Centering on user location")
-                // Capture self weakly in the Task to prevent retain cycles
+            // Only process the first location update to prevent multiple fetches
+            if !initialLocationProcessed && self.shouldCenterOnLocation {
+                initialLocationProcessed = true
+                print("Processing initial location update")
+                
+                // Since we're using @MainActor, this will be dispatched to the main thread
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     self.updateRegion(to: location.coordinate)
@@ -317,6 +353,10 @@ class MapViewModel: ObservableObject {
         // Provide haptic feedback
         HapticsManager.shared.prepareGenerators()
         
+        // Log the current state before toggling
+        logger.notice("Toggling category: \(category)")
+        logger.notice("Current state - isAllCategoriesMode: \(self.isAllCategoriesMode), selectedCategories: \(self.selectedCategories.joined(separator: ", "))")
+        
         // If "All" is currently selected and we're selecting a specific category
         if isAllCategoriesMode {
             // Turn off "All" mode
@@ -327,6 +367,15 @@ class MapViewModel: ObservableObject {
             selectedCategories.insert(category)
             // Stronger feedback for selection
             HapticsManager.shared.mediumImpact(intensity: 0.8)
+            
+            logger.notice("Switched from All mode to single category: \(category)")
+            
+            // Store the current places as the "all categories" cache if it's not already set
+            if allCategoriesCache.isEmpty {
+                allCategoriesCache = places
+                lastCachedCenter = lastQueriedCenter
+                logger.notice("Stored \(self.allCategoriesCache.count) places in all categories cache")
+            }
         } else {
             // Normal toggle behavior when "All" is not selected
             if selectedCategories.contains(category) {
@@ -334,25 +383,36 @@ class MapViewModel: ObservableObject {
                 // Lighter feedback for deselection
                 HapticsManager.shared.lightImpact(intensity: 0.6)
                 
-                // If we removed a category and now no categories are selected, set isAllCategoriesMode to false
+                logger.notice("Removed category: \(category)")
+                
+                // If we removed a category and now no categories are selected, set isAllCategoriesMode to true
+                // This ensures we always have at least one category selected
                 if selectedCategories.isEmpty {
-                    isAllCategoriesMode = false
+                    isAllCategoriesMode = true
+                    selectedCategories = Set(categories.map { $0.1 })
+                    logger.notice("No categories selected, switching back to All mode")
                 }
             } else {
                 selectedCategories.insert(category)
                 // Stronger feedback for selection
                 HapticsManager.shared.mediumImpact(intensity: 0.8)
                 
+                logger.notice("Added category: \(category)")
+                
                 // If we added a category and now all categories are selected, set isAllCategoriesMode to true
                 if areAllCategoriesSelected {
                     isAllCategoriesMode = true
+                    logger.notice("All categories selected, switching to All mode")
                 }
             }
         }
         
+        // Log the new state after toggling
+        logger.notice("New state - isAllCategoriesMode: \(self.isAllCategoriesMode), selectedCategories: \(self.selectedCategories.joined(separator: ", "))")
+        
         // Update notification if favorites filter is active
         if showFavoritesOnly {
-            if selectedCategories.isEmpty {
+            if isAllCategoriesMode {
                 showNotificationMessage("Showing all favorites")
             } else {
                 let categoryNames = selectedCategories.map { categoryName(for: $0) }.joined(
@@ -364,10 +424,74 @@ class MapViewModel: ObservableObject {
             }
         }
         
-        // Since we're using @MainActor, this will be dispatched to the main thread
-        Task { [weak self] in
-            guard let self = self else { return }
-            try await self.fetchAndUpdatePlaces()
+        // Check if we can use the cached data
+        let canUseCache = !allCategoriesCache.isEmpty && 
+                         lastCachedCenter != nil && 
+                         lastCachedCenter?.coordinate.latitude == lastQueriedCenter.coordinate.latitude &&
+                         lastCachedCenter?.coordinate.longitude == lastQueriedCenter.coordinate.longitude
+        
+        if canUseCache {
+            logger.notice("Using cached data for filtering - viewport unchanged")
+            
+            // Filter the cached data based on selected categories
+            if isAllCategoriesMode {
+                // If "All" mode is selected, use all cached places
+                places = allCategoriesCache
+                logger.notice("Using all \(self.places.count) places from cache")
+            } else {
+                // Otherwise, filter the cached places by the selected categories
+                places = allCategoriesCache.filter { place in
+                    // If the category is empty, include it in all categories
+                    if place.category.isEmpty {
+                        return true
+                    }
+                    
+                    // Check if the category matches any of the selected categories
+                    let matches = selectedCategories.contains(place.category)
+                    
+                    // If it doesn't match directly, check if it's a partial match
+                    if !matches {
+                        // Check if any selected category is a substring of the place's category
+                        // or if the place's category is a substring of any selected category
+                        let partialMatches = selectedCategories.contains { selectedCategory in
+                            place.category.contains(selectedCategory) || selectedCategory.contains(place.category)
+                        }
+                        
+                        if partialMatches {
+                            return true
+                        }
+                    }
+                    
+                    return matches
+                }
+                
+                logger.notice("Filtered to \(self.places.count) places from cache based on selected categories")
+            }
+            
+            // Trigger UI update
+            objectWillChange.send()
+            
+            // Show notification about the filter
+            if !isAllCategoriesMode {
+                let categoryNames = selectedCategories.map { categoryName(for: $0) }.joined(separator: ", ")
+                showNotificationMessage("Showing \(categoryNames)")
+            } else {
+                showNotificationMessage("Showing all categories")
+            }
+        } else {
+            // If we can't use the cache, clear it and make a new request
+            logger.notice("Cache cannot be used, making new network request")
+            
+            // Clear the cache to ensure we get fresh data for the new category selection
+            cache.clearPlacesCache()
+            allCategoriesCache = []
+            lastCachedCenter = nil
+            
+            // Since we're using @MainActor, this will be dispatched to the main thread
+            Task { [weak self] in
+                guard let self = self else { return }
+                try await self.fetchAndUpdatePlaces()
+            }
         }
     }
     
@@ -388,7 +512,7 @@ class MapViewModel: ObservableObject {
         
         // Show notification with haptic feedback
         if showFavoritesOnly {
-            if selectedCategories.isEmpty {
+            if isAllCategoriesMode {
                 showNotificationMessage("Showing all favorites")
             } else {
                 let categoryNames = selectedCategories.map { categoryName(for: $0) }.joined(
@@ -399,7 +523,7 @@ class MapViewModel: ObservableObject {
                 )
             }
         } else {
-            if selectedCategories.isEmpty {
+            if selectedCategories.isEmpty || isAllCategoriesMode {
                 showNotificationMessage("Showing all places")
             } else {
                 showNotificationMessage("Filter removed")
@@ -600,53 +724,71 @@ class MapViewModel: ObservableObject {
     }
     
     func onAppear() {
-        // Request a fresh location update
-        locationManager.requestLocation()
-        
-        // Try to use the user's location if available
-        Task { @MainActor [weak self] in
-            guard let self = self else { return }
+        // Only request location if we don't already have places loaded
+        if places.isEmpty {
+            // Request a fresh location update
+            locationManager.requestLocation()
             
-            // Wait a short time for location to update
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-            
-            if let userLocation = locationManager.location {
-                print("User location found: \(userLocation.coordinate)")
+            // Try to use the user's location if available
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
                 
-                // Create a new region centered on the user's location
-                let newRegion = MKCoordinateRegion(
-                    center: userLocation.coordinate,
-                    span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                )
+                // Wait a short time for location to update
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
                 
-                // Update the region - this will trigger the onChange handler in ContentView
-                self.region = newRegion
-                
-                // Notify about region change
-                onRegionDidChange?(newRegion)
-                
-                // Update the last queried center to match the new region
-                lastQueriedCenter = CoordinateWrapper(userLocation.coordinate)
-                
-                try await self.fetchAndUpdatePlaces()
-                self.shouldCenterOnLocation = false
-                
-                // Explicitly trigger UI update
-                objectWillChange.send()
-            } else {
-                print("User location not available, using default location")
-                // Request location authorization if not determined yet
-                if locationManager.authorizationStatus == .notDetermined {
-                    locationManager.requestWhenInUseAuthorization()
-                } else if locationManager.authorizationStatus == .authorizedWhenInUse || 
-                          locationManager.authorizationStatus == .authorizedAlways {
-                    // Start location updates to get the current location
-                    locationManager.startUpdatingLocation()
+                if let userLocation = locationManager.location {
+                    print("User location found: \(userLocation.coordinate)")
+                    
+                    // Create a new region centered on the user's location
+                    let newRegion = MKCoordinateRegion(
+                        center: userLocation.coordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                    )
+                    
+                    // Update the region - this will trigger the onChange handler in ContentView
+                    self.region = newRegion
+                    
+                    // Notify about region change
+                    onRegionDidChange?(newRegion)
+                    
+                    // Update the last queried center to match the new region
+                    lastQueriedCenter = CoordinateWrapper(userLocation.coordinate)
+                    
+                    // Only fetch places if we don't already have places loaded and we're not already fetching
+                    if self.places.isEmpty && !self.isFetchingPlaces {
+                        logger.notice("Fetching places on appear (user location available)")
+                        try await self.fetchAndUpdatePlaces()
+                    } else {
+                        logger.notice("Skipping fetch on appear - places already loaded or fetch in progress")
+                    }
+                    self.shouldCenterOnLocation = false
+                    
+                    // Explicitly trigger UI update
+                    objectWillChange.send()
+                } else {
+                    print("User location not available, using default location")
+                    // Request location authorization if not determined yet
+                    if locationManager.authorizationStatus == .notDetermined {
+                        locationManager.requestWhenInUseAuthorization()
+                    } else if locationManager.authorizationStatus == .authorizedWhenInUse || 
+                              locationManager.authorizationStatus == .authorizedAlways {
+                        // Start location updates to get the current location
+                        locationManager.startUpdatingLocation()
+                    }
+                    
+                    // Fetch places at the default location only if we don't already have places and we're not already fetching
+                    if self.places.isEmpty && !self.isFetchingPlaces {
+                        logger.notice("Fetching places on appear (default location)")
+                        try await self.fetchAndUpdatePlaces()
+                    } else {
+                        logger.notice("Skipping fetch on appear - places already loaded or fetch in progress")
+                    }
                 }
-                
-                // Fetch places at the default location
-                try await self.fetchAndUpdatePlaces()
             }
+        } else {
+            // If we already have places, just trigger a UI update
+            logger.notice("Places already loaded on appear, skipping fetch")
+            objectWillChange.send()
         }
     }
     
@@ -730,78 +872,181 @@ class MapViewModel: ObservableObject {
     
     @MainActor
     func fetchAndUpdatePlaces() async throws {
-        // Use a task to delay showing the loading indicator
-        let loadingTask = Task { @MainActor in
-            // Wait a short delay before showing loading indicator
-            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
-            if !Task.isCancelled {
-                isLoading = true
-            }
-        }
+        // Cancel any existing debounce task
+        fetchDebounceTask?.cancel()
         
-        error = nil
-        showError = false
-        
-        // Cancel any previous requests before starting a new one
-        (googlePlacesService as? GooglePlacesService)?.cancelPlacesRequests()
-
-        do {
-            let activeCategories = selectedCategories.isEmpty ? categories : categories.filter {
-                selectedCategories.contains($0.1)
+        // Create a new debounce task
+        fetchDebounceTask = Task { [weak self] in
+            guard let self = self else { return }
+            
+            // Check if we're already fetching or if we've fetched recently
+            if isFetchingPlaces {
+                logger.notice("Fetch already in progress, skipping duplicate request")
+                return
             }
-            let fetchedPlaces = try await fetchPlaces(
-                center: region.center,
-                categories: activeCategories
-            )
             
-            // Cancel the loading indicator task if it hasn't shown yet
-            loadingTask.cancel()
-            isLoading = false
-            
-            self.places = fetchedPlaces
-            
-            // If we got zero places, provide feedback
-            if fetchedPlaces.isEmpty {
-                // Provide haptic feedback for no results
-                HapticsManager.shared.notification(type: .warning)
+            let now = Date()
+            if now.timeIntervalSince(lastFetchTime) < fetchDebounceInterval {
+                // Wait for the debounce interval
+                let waitTime = fetchDebounceInterval - now.timeIntervalSince(lastFetchTime)
+                logger.notice("Debouncing fetch request for \(waitTime) seconds")
+                try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
                 
-                // Show notification
-                showNotificationMessage("No places found in this area")
-            }
-        } catch let networkError as NetworkError {
-            self.error = networkError
-            
-            // Handle specific error types
-            if case .noResults(let placeType) = networkError {
-                // Provide haptic feedback for no results
-                HapticsManager.shared.notification(type: .warning)
-                
-                // Show notification
-                showNotificationMessage("No \(categoryName(for: placeType)) places found in this area")
-                
-                // Don't show error alert for no results
-                self.showError = false
-            } else {
-                // Only show error alert if it's not a cancelled request
-                self.showError = networkError.shouldShowAlert
-                
-                // Provide error feedback for non-cancelled requests
-                if networkError.shouldShowAlert {
-                    HapticsManager.shared.errorSequence()
+                // If this task was cancelled during the sleep, exit
+                if Task.isCancelled {
+                    return
                 }
             }
             
-            print("Network error: \(networkError.localizedDescription)")
-        } catch {
-            self.error = .unknownError(error)
-            self.showError = true
-            print("Unknown error: \(error.localizedDescription)")
+            // Mark that we're starting a fetch
+            isFetchingPlaces = true
+            lastFetchTime = Date()
+            
+            // Use a task to delay showing the loading indicator
+            let loadingTask = Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                // Wait a short delay before showing loading indicator
+                try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+                if !Task.isCancelled {
+                    isLoading = true
+                }
+            }
+            
+            error = nil
+            showError = false
+            
+            // Cancel any previous requests before starting a new one
+            backendService.cancelPlacesRequests()
+
+            do {
+                // Only include categories that are currently selected
+                let activeCategories: [(emoji: String, name: String, type: String)]
+                if isAllCategoriesMode {
+                    // If in "All" mode, include all categories
+                    activeCategories = categories
+                } else {
+                    // Otherwise, only include the selected categories
+                    activeCategories = categories.filter { self.selectedCategories.contains($0.1) }
+                }
+                
+                // Log the active categories for debugging
+                logger.notice("Fetching places with active categories: \(activeCategories.map { $0.name }.joined(separator: ", "))")
+                
+                let fetchedPlaces = try await fetchPlaces(
+                    center: region.center,
+                    categories: activeCategories
+                )
+                
+                // Cancel the loading indicator task if it hasn't shown yet
+                loadingTask.cancel()
+                isLoading = false
+                
+                // Log the fetched places
+                logger.notice("Received \(fetchedPlaces.count) places from the service")
+                if let firstPlace = fetchedPlaces.first {
+                    logger.notice("First place: id=\(firstPlace.placeId), name=\(firstPlace.name), category=\(firstPlace.category), coordinates=(\(firstPlace.coordinate.latitude), \(firstPlace.coordinate.longitude))")
+                }
+                
+                // Log category distribution
+                let categoryDistribution = Dictionary(grouping: fetchedPlaces, by: { $0.category })
+                    .mapValues { $0.count }
+                    .sorted { $0.value > $1.value }
+                
+                logger.notice("Category distribution in fetched places:")
+                for (category, count) in categoryDistribution {
+                    logger.notice("  - \(category.isEmpty ? "[empty]" : category): \(count) places")
+                }
+                
+                // Check if any places have empty categories and log them
+                let placesWithEmptyCategory = fetchedPlaces.filter { $0.category.isEmpty }
+                if !placesWithEmptyCategory.isEmpty {
+                    logger.warning("Found \(placesWithEmptyCategory.count) places with empty categories")
+                    for place in placesWithEmptyCategory.prefix(3) {
+                        logger.warning("Place with empty category: \(place.name), id=\(place.placeId)")
+                    }
+                }
+                
+                // Check if any places have categories that don't match our selected categories
+                let selectedCategoryNames = selectedCategories.isEmpty ? 
+                    Set(categories.map { $0.1 }) : 
+                    selectedCategories
+                
+                let placesWithUnmatchedCategory = fetchedPlaces.filter { !selectedCategoryNames.contains($0.category) }
+                if !placesWithUnmatchedCategory.isEmpty {
+                    logger.warning("Found \(placesWithUnmatchedCategory.count) places with categories not in selected categories")
+                    logger.warning("Selected categories: \(selectedCategoryNames.joined(separator: ", "))")
+                    for place in placesWithUnmatchedCategory.prefix(3) {
+                        logger.warning("Place with unmatched category: \(place.name), category=\(place.category)")
+                    }
+                }
+                
+                // Update places and trigger animation flag
+                self.places = fetchedPlaces
+                self.newPlacesLoaded = true
+                
+                // If we fetched all categories, update the all categories cache
+                if isAllCategoriesMode {
+                    allCategoriesCache = fetchedPlaces
+                    lastCachedCenter = lastQueriedCenter
+                    logger.notice("Updated all categories cache with \(self.allCategoriesCache.count) places")
+                }
+                
+                // Reset the animation flag after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    guard let self = self else { return }
+                    self.newPlacesLoaded = false
+                }
+                
+                // Log the places after assignment
+                logger.notice("Updated self.places with \(self.places.count) places")
+                logger.notice("Filtered places count: \(self.filteredPlaces.count)")
+                
+                // If we got zero places, provide feedback
+                if fetchedPlaces.isEmpty {
+                    // Provide haptic feedback for no results
+                    HapticsManager.shared.notification(type: .warning)
+                    
+                    // Show notification
+                    showNotificationMessage("No places found in this area")
+                }
+            } catch let networkError as NetworkError {
+                self.error = networkError
+                
+                // Handle specific error types
+                if case .noResults(let placeType) = networkError {
+                    // Provide haptic feedback for no results
+                    HapticsManager.shared.notification(type: .warning)
+                    
+                    // Show notification
+                    showNotificationMessage("No \(categoryName(for: placeType)) places found in this area")
+                    
+                    // Don't show error alert for no results
+                    self.showError = false
+                } else {
+                    // Only show error alert if it's not a cancelled request
+                    self.showError = networkError.shouldShowAlert
+                    
+                    // Provide error feedback for non-cancelled requests
+                    if networkError.shouldShowAlert {
+                        HapticsManager.shared.errorSequence()
+                    }
+                }
+                
+                print("Network error: \(networkError.localizedDescription)")
+            } catch {
+                self.error = .unknownError(error)
+                self.showError = true
+                print("Unknown error: \(error.localizedDescription)")
+            }
+            
+            // Mark that we've finished fetching
+            isFetchingPlaces = false
         }
     }
     
     private func fetchPlaces(center: CLLocationCoordinate2D, categories: [(emoji: String, name: String, type: String)]) async throws -> [Place] {
         return try await withCheckedThrowingContinuation { continuation in
-            googlePlacesService.fetchPlaces(
+            backendService.fetchPlaces(
                 center: center,
                 region: self.region,
                 categories: categories,
@@ -860,32 +1105,37 @@ class MapViewModel: ObservableObject {
         // Provide haptic feedback
         HapticsManager.shared.prepareGenerators()
         
-        // Toggle the All Categories mode
-        isAllCategoriesMode.toggle()
-        
+        // If "All" is already selected, don't allow toggling it off directly
+        // This prevents the case where no categories would be selected
         if isAllCategoriesMode {
-            // If switching to "All" mode, select all categories
-            selectedCategories = Set(categories.map { $0.1 })
-            HapticsManager.shared.mediumImpact(intensity: 0.8)
+            // Just provide feedback to indicate the action was received but not needed
+            HapticsManager.shared.lightImpact(intensity: 0.4)
             
-            // Show appropriate notification based on favorites filter
+            // Show notification to inform the user
             if showFavoritesOnly {
-                showNotificationMessage("Showing favorites in all categories")
+                showNotificationMessage("Already showing all favorites")
             } else {
-                showNotificationMessage("Showing all categories")
+                showNotificationMessage("Already showing all categories")
             }
-        } else {
-            // If switching out of "All" mode, clear all categories
-            selectedCategories.removeAll()
-            HapticsManager.shared.lightImpact(intensity: 0.6)
-            
-            // Show appropriate notification based on favorites filter
-            if showFavoritesOnly {
-                showNotificationMessage("Showing all favorites")
-            } else {
-                showNotificationMessage("No categories selected")
-            }
+            return
         }
+        
+        // If we get here, we're switching from specific categories to "All" mode
+        isAllCategoriesMode = true
+        
+        // Select all categories
+        selectedCategories = Set(categories.map { $0.1 })
+        HapticsManager.shared.mediumImpact(intensity: 0.8)
+        
+        // Show appropriate notification based on favorites filter
+        if showFavoritesOnly {
+            showNotificationMessage("Showing favorites in all categories")
+        } else {
+            showNotificationMessage("Showing all categories")
+        }
+        
+        // Clear the cache to ensure we get fresh data for the new category selection
+        cache.clearPlacesCache()
         
         // Since we're using @MainActor, this will be dispatched to the main thread
         Task { [weak self] in
@@ -986,7 +1236,7 @@ class MapViewModel: ObservableObject {
         updateSubscription?.cancel()
         
         // Cancel all pending requests when the view model is deallocated
-        (googlePlacesService as? GooglePlacesService)?.cancelPlacesRequests()    
+        backendService.cancelPlacesRequests()
     }
     
     // New method to refresh places by clearing the cache and fetching fresh data

@@ -51,7 +51,7 @@ class ServiceContainer {
     static let shared = ServiceContainer()
     
     // MARK: - Services
-    let googlePlacesService: GooglePlacesServiceProtocol
+    let backendService: BackendService
     let userPreferences: UserPreferences
     let hapticsManager: HapticsManager
     let mapAppUtility: MapAppUtility
@@ -63,7 +63,9 @@ class ServiceContainer {
     // MARK: - Initialization
     private init() {
         // Initialize services
-        googlePlacesService = GooglePlacesService()
+        // Always use BackendService for API calls
+        backendService = BackendService()
+        
         userPreferences = UserPreferences()
         hapticsManager = HapticsManager.shared
         mapAppUtility = MapAppUtility.shared
@@ -71,11 +73,12 @@ class ServiceContainer {
         
         // Initialize view models
         mapViewModel = MapViewModel(
-            googlePlacesService: googlePlacesService,
+            backendService: backendService,
             userPreferences: userPreferences
         )
         
-        print("ServiceContainer initialized")
+        // Log initialization
+        print("ServiceContainer initialized with BackendService")
     }
     
     // MARK: - Methods
@@ -102,6 +105,22 @@ class ServiceContainer {
             // Post the notification again after a short delay to ensure all view models are updated
             // This helps with race conditions where some view models might not be ready yet
             NotificationCenter.default.post(name: Notification.Name("ServiceContainer.updateAllViewModels"), object: nil)
+        }
+    }
+    
+    /// Pre-fetches places data while the splash screen is showing
+    func preFetchPlaces() {
+        print("ServiceContainer: Pre-fetching places data during splash screen")
+        
+        // Start the fetch process in the background
+        Task {
+            do {
+                // Call the fetchAndUpdatePlaces method on the mapViewModel
+                try await mapViewModel.fetchAndUpdatePlaces()
+                print("ServiceContainer: Successfully pre-fetched places data")
+            } catch {
+                print("ServiceContainer: Error pre-fetching places data: \(error.localizedDescription)")
+            }
         }
     }
 } 

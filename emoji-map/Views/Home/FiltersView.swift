@@ -323,14 +323,3 @@ struct FilterCard<Content: View>: View {
     }
 }
 
-#Preview {
-    FiltersView(
-        selectedPriceLevels: [1, 2, 3, 4],
-        showOpenNowOnly: false,
-        minimumRating: 0,
-        useLocalRatings: false,
-        onApplyFilters: nil
-    )
-    .environmentObject(MapViewModel(googlePlacesService: GooglePlacesService()))
-    .frame(height: 600)
-} 

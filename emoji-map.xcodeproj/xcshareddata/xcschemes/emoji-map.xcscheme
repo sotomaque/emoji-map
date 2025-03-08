@@ -74,13 +74,6 @@
             ReferencedContainer = "container:emoji-map.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <EnvironmentVariables>
-         <EnvironmentVariable
-            key = "GOOGLE_PLACES_API_KEY"
-            value = "AIzaSyCO3I93iowsiHycyGCHtRnoIG5xCE1hJTU"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
