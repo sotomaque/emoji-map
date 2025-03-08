@@ -38,28 +38,17 @@ enum BannerStyle {
         }
     }
     
-    var shape: AnyShape {
+    // Instead of returning a shape, return a ViewModifier that applies the appropriate shape
+    @ViewBuilder
+    func backgroundShape<S: ShapeStyle>(fill: S) -> some View {
         switch self {
         case .notification:
-            return AnyShape(Capsule())
+            Capsule()
+                .fill(fill)
         case .warning, .error:
-            return AnyShape(Rectangle())
+            Rectangle()
+                .fill(fill)
         }
-    }
-}
-
-// Type-erased shape wrapper
-struct AnyShape: Shape {
-    private let _path: (CGRect) -> Path
-    
-    init<S: Shape>(_ shape: S) {
-        _path = { rect in
-            shape.path(in: rect)
-        }
-    }
-    
-    func path(in rect: CGRect) -> Path {
-        _path(rect)
     }
 }
 
@@ -79,8 +68,7 @@ struct Banner: View {
                     .padding(.vertical, style == .notification ? 12 : 8)
                     .padding(.horizontal, style == .notification ? 20 : 16)
                     .background(
-                        style.shape
-                            .fill(style.backgroundColor)
+                        style.backgroundShape(fill: style.backgroundColor)
                             .shadow(
                                 color: .black.opacity(0.2),
                                 radius: style == .notification ? 8 : 3,

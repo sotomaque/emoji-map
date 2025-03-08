@@ -24,7 +24,7 @@ struct emoji_mapApp: App {
     }()
     
     // Add state to track if splash screen is showing
-    @State private var isShowingSplash = true
+    @State private var isShowingSplash = false
     
     var body: some Scene {
         WindowGroup {
@@ -39,6 +39,11 @@ struct emoji_mapApp: App {
                 }
                 .animation(.easeInOut, value: userPreferences.hasCompletedOnboarding)
                 .zIndex(0)
+                .onAppear {
+                    // Only show splash screen on subsequent launches (not first launch)
+                    // This means the app has been launched before AND onboarding is completed
+                    isShowingSplash = userPreferences.hasLaunchedBefore && userPreferences.hasCompletedOnboarding
+                }
                 
                 // Show splash screen on top if it's active
                 if isShowingSplash {

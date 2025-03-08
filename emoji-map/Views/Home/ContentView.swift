@@ -20,8 +20,6 @@ struct ContentView: View {
     @State private var debounceTimer: Timer?
     @State private var mapPosition: MapCameraPosition = .automatic
     @State private var showSettings = false
-    @State private var showTooltip = false
-    @State private var tooltipTimer: Timer?
     
     var body: some View {
         ZStack {
@@ -43,6 +41,8 @@ struct ContentView: View {
                                     viewModel.selectedPlace = place
                                 }
                             )
+                            // Use a unique ID that changes when new places are loaded to force view recreation and animation
+                            .id("\(place.placeId)_\(viewModel.newPlacesLoaded ? "new" : "existing")")
                         },
                         label: {
                             // Empty label since we're using custom annotation view
@@ -87,23 +87,6 @@ struct ContentView: View {
                 }
                 : nil
             )
-            
-            // Overlay layers
-            VStack {
-                // Loading indicator at the top - minimal style to prevent layout shifts
-                if viewModel.isLoading {
-                    UnifiedLoadingIndicator(
-                        message: "Loading places...",
-                        color: .blue,
-                        style: .minimal,
-                        backgroundColor: Color(.systemBackground).opacity(0.8)
-                    )
-                    .transition(.opacity)
-                    .padding(.top, 8)
-                }
-                
-                Spacer()
-            }
             
             if !viewModel.isLocationAvailable && !viewModel.isLocationPermissionDenied {
                 // Progress view when location isn't available but not denied - use minimal style
@@ -208,24 +191,6 @@ struct ContentView: View {
                             showSettings = true
                         }
                 )
-                // Add a tooltip to hint at the hidden feature
-                .overlay(
-                    ZStack {
-                        if showTooltip {
-                            VStack {
-                                Text("Hold for Settings")
-                                    .font(.caption)
-                                    .padding(8)
-                                    .background(Color.black.opacity(0.7))
-                                    .foregroundColor(.white)
-                                    .cornerRadius(8)
-                                    .offset(y: -50)
-                                    .transition(.opacity)
-                            }
-                        }
-                    }
-                        .animation(.easeInOut, value: showTooltip)
-                )
             }
             
             // Location permission view overlay
@@ -265,25 +230,6 @@ struct ContentView: View {
                 self.mapPosition = .region(newRegion)
                 print("Map region updated to: \(newRegion.center)")
             }
-            
-            // Show tooltip on first launch
-            if !viewModel.preferences.hasShownSettingsTooltip {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    showTooltip = true
-                    
-                    // Hide tooltip after 5 seconds
-                    tooltipTimer = Timer
-                        .scheduledTimer(
-                            withTimeInterval: 5.0,
-                            repeats: false
-                        ) { _ in
-                            withAnimation {
-                                showTooltip = false
-                            }
-                            viewModel.preferences.markSettingsTooltipAsShown()
-                        }
-                }
-            }
         }
         .onDisappear {
             // Clean up the timer when the view disappears
@@ -292,8 +238,6 @@ struct ContentView: View {
             
             // Remove the region change callback
             viewModel.onRegionDidChange = nil
-            
-            tooltipTimer?.invalidate()
         }
         .sheet(item: $viewModel.selectedPlace) { place in
             NavigationStack {
@@ -338,12 +282,12 @@ isPresented: $viewModel.showError,
             SettingsView(userPreferences: viewModel.preferences)
         }
     }
-    
-    // Function to provide escalating haptic feedback for settings access
+     // Function to provide escalating haptic feedback for settings access
     private func provideSettingsHapticFeedback() {
         // Use the centralized HapticsManager for escalating feedback
         HapticsManager.shared.escalatingSequence()
     }
+    
     
     // Haptic feedback function
     private func triggerHapticFeedback() {
@@ -361,29 +305,19 @@ isPresented: $viewModel.showError,
         
         // Create a new timer that will fire after a short delay
         debounceTimer = Timer
-            .scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
-                // Only process region changes that are at least 0.3 seconds apart
+            .scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                // Only process region changes that are at least 0.5 seconds apart
                 let now = Date()
-                if now.timeIntervalSince(self.lastRegionChangeTime) >= 0.3 {
+                if now.timeIntervalSince(self.lastRegionChangeTime) >= 0.5 {
                     self.lastRegionChangeTime = now
                 
-                    // Ensure we're on the main thread when calling viewModel methods
-                    if Thread.isMainThread {
-                        self.viewModel
-                            .onRegionChange(
-                                newCenter: CoordinateWrapper(
-                                    self.centerCoordinate
-                                )
+                    // Always dispatch to the main actor to call the isolated method
+                    Task { @MainActor in
+                        self.viewModel.onRegionChange(
+                            newCenter: CoordinateWrapper(
+                                self.centerCoordinate
                             )
-                    } else {
-                        DispatchQueue.main.async {
-                            self.viewModel
-                                .onRegionChange(
-                                    newCenter: CoordinateWrapper(
-                                        self.centerCoordinate
-                                    )
-                                )
-                        }
+                        )
                     }
                 }
             }

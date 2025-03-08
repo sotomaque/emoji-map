@@ -11,11 +11,11 @@ class BasicTest: XCTestCase {
     // Make the test async to handle MainActor isolation
     func testMapViewModel() async throws {
         // Test that MapViewModel can be instantiated
-        let mockService = MockGooglePlacesService()
+        let mockService = MockBackendService()
         
         // Use MainActor.run to access MainActor-isolated properties
         await MainActor.run {
-            let viewModel = MapViewModel(googlePlacesService: mockService)
+            let viewModel = MapViewModel(backendService: mockService)
             
             XCTAssertNotNil(viewModel, "MapViewModel should be instantiated")
             XCTAssertEqual(viewModel.categories.count, 12, "MapViewModel should have 12 categories")

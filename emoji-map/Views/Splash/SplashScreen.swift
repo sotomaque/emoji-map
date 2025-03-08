@@ -72,7 +72,7 @@ struct SplashScreen: View {
                     .animation(.easeOut(duration: 0.7).delay(0.3), value: showTitle)
                 
                 // App tagline
-                Text("Discover places with emoji")
+                Text("Discover places with emojis")
                     .font(.system(size: 20, weight: .medium, design: .rounded))
                     .foregroundColor(.white.opacity(0.9))
                     .opacity(showTagline ? 1 : 0)
@@ -87,6 +87,11 @@ struct SplashScreen: View {
             
             // Create emoji particles
             createEmojiParticles()
+            
+            // Start pre-fetching places data while the splash screen is showing
+            MainActor.assumeIsolated {
+                ServiceContainer.shared.preFetchPlaces()
+            }
             
             // Set a timer to finish the splash screen
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {

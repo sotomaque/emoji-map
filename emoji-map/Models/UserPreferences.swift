@@ -98,10 +98,10 @@ class UserPreferences: ObservableObject {
     @Published var favorites: [FavoritePlace] = []
     @Published var ratings: [PlaceRating] = []
     @Published var hasCompletedOnboarding: Bool = false
-    @Published var hasShownSettingsTooltip: Bool = false
     @Published var distanceUnit: DistanceUnit = .miles
     @Published var defaultMapApp: String = "Apple Maps"
     @Published var useDarkMode: Bool = false
+    @Published var hasLaunchedBefore: Bool = false
     
     // Notification for preference changes
     static let favoritesChangedNotification = Notification.Name("UserPreferences.favoritesChanged")
@@ -110,11 +110,11 @@ class UserPreferences: ObservableObject {
     private let favoritesKey = "user_favorites"
     private let ratingsKey = "user_ratings"
     private let onboardingKey = "has_completed_onboarding"
-    private let settingsTooltipKey = "has_shown_settings_tooltip"
     private let distanceUnitKey = "distance_unit"
     private let defaultMapAppKey = "default_map_app"
     private let useDarkModeKey = "use_dark_mode"
     private let hasSetDarkModeKey = "has_set_dark_mode"
+    private let hasLaunchedBeforeKey = "has_launched_before"
     
     let userDefaults: UserDefaults
     
@@ -123,10 +123,15 @@ class UserPreferences: ObservableObject {
         loadFavorites()
         loadRatings()
         loadOnboardingStatus()
-        loadSettingsTooltipStatus()
         loadDistanceUnit()
         loadDefaultMapApp()
         loadAppearancePreferences()
+        loadLaunchStatus()
+        
+        // Mark that the app has been launched
+        if !hasLaunchedBefore {
+            markAsLaunched()
+        }
     }
     
     // MARK: - Favorites Management
@@ -238,7 +243,7 @@ class UserPreferences: ObservableObject {
     
     // MARK: - Onboarding Status
     
-    func completeOnboarding() {
+    func markOnboardingAsCompleted() {
         hasCompletedOnboarding = true
         userDefaults.set(true, forKey: onboardingKey)
         userDefaults.synchronize()
@@ -246,18 +251,6 @@ class UserPreferences: ObservableObject {
     
     private func loadOnboardingStatus() {
         hasCompletedOnboarding = userDefaults.bool(forKey: onboardingKey)
-    }
-    
-    // MARK: - Settings Tooltip Status
-    
-    func markSettingsTooltipAsShown() {
-        hasShownSettingsTooltip = true
-        userDefaults.set(true, forKey: settingsTooltipKey)
-        userDefaults.synchronize()
-    }
-    
-    private func loadSettingsTooltipStatus() {
-        hasShownSettingsTooltip = userDefaults.bool(forKey: settingsTooltipKey)
     }
     
     // MARK: - Distance Unit Management
@@ -318,6 +311,18 @@ class UserPreferences: ObservableObject {
         return distanceUnit.formatDistance(distance)
     }
     
+    // MARK: - Launch Status
+    
+    func markAsLaunched() {
+        hasLaunchedBefore = true
+        userDefaults.set(true, forKey: hasLaunchedBeforeKey)
+        userDefaults.synchronize()
+    }
+    
+    private func loadLaunchStatus() {
+        hasLaunchedBefore = userDefaults.bool(forKey: hasLaunchedBeforeKey)
+    }
+    
     // MARK: - Data Reset
     
     func resetAllData() {
@@ -325,20 +330,20 @@ class UserPreferences: ObservableObject {
         favorites.removeAll()
         ratings.removeAll()
         hasCompletedOnboarding = false
-        hasShownSettingsTooltip = false
         distanceUnit = .miles
         defaultMapApp = "Apple Maps"
         useDarkMode = false
+        hasLaunchedBefore = false
         
         // Clear all data from UserDefaults
         userDefaults.removeObject(forKey: favoritesKey)
         userDefaults.removeObject(forKey: ratingsKey)
         userDefaults.removeObject(forKey: onboardingKey)
-        userDefaults.removeObject(forKey: settingsTooltipKey)
         userDefaults.removeObject(forKey: distanceUnitKey)
         userDefaults.removeObject(forKey: defaultMapAppKey)
         userDefaults.removeObject(forKey: useDarkModeKey)
         userDefaults.removeObject(forKey: hasSetDarkModeKey)
+        userDefaults.removeObject(forKey: hasLaunchedBeforeKey)
         userDefaults.synchronize()
         
         // Notify observers

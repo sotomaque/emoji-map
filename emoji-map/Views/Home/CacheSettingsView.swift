@@ -30,7 +30,7 @@ struct CacheSettingsView: View {
                 // Cache Control Section
                 Section(header: Text("Cache Control")) {
                     Toggle("Enable Caching", isOn: $isCachingEnabled)
-                        .onChange(of: isCachingEnabled) { newValue in
+                        .onChange(of: isCachingEnabled) { oldValue, newValue in
                             cache.setCachingEnabled(newValue)
                             refreshStats()
                         }
@@ -55,7 +55,7 @@ struct CacheSettingsView: View {
                             .font(.subheadline)
                         
                         Slider(value: $placesExpirationDays, in: 1...30, step: 1)
-                            .onChange(of: placesExpirationDays) { newValue in
+                            .onChange(of: placesExpirationDays) { oldValue, newValue in
                                 // Convert days to seconds
                                 let seconds = newValue * 24 * 60 * 60
                                 cache.setPlacesExpiration(seconds)
@@ -69,7 +69,7 @@ struct CacheSettingsView: View {
                             .font(.subheadline)
                         
                         Slider(value: $detailsExpirationHours, in: 1...48, step: 1)
-                            .onChange(of: detailsExpirationHours) { newValue in
+                            .onChange(of: detailsExpirationHours) { oldValue, newValue in
                                 // Convert hours to seconds
                                 let seconds = newValue * 60 * 60
                                 cache.setDetailsExpiration(seconds)

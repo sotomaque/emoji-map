@@ -53,7 +53,7 @@ class PlaceDetailViewModel: ObservableObject {
     }
     
     // Make service a private variable instead of a constant so we can update it
-    private var service: GooglePlacesServiceProtocol
+    private var service: BackendService
     
     // Logger for debugging
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "PlaceDetailViewModel")
@@ -67,24 +67,24 @@ class PlaceDetailViewModel: ObservableObject {
         self.mapViewModel = MapViewModel()
         self.isInitialized = false
         // Use the shared service from ServiceContainer
-        self.service = ServiceContainer.shared.googlePlacesService
+        self.service = ServiceContainer.shared.backendService
         
         // Log that we're using the default initializer
         logger.info("PlaceDetailViewModel initialized with default initializer (dummy MapViewModel)")
     }
     
-    init(mapViewModel: MapViewModel, service: GooglePlacesServiceProtocol? = nil) {
+    init(mapViewModel: MapViewModel, service: BackendService? = nil) {
         self.mapViewModel = mapViewModel
         self.isInitialized = true
         // Use the provided service or get the shared instance from ServiceContainer
-        self.service = service ?? ServiceContainer.shared.googlePlacesService
+        self.service = service ?? ServiceContainer.shared.backendService
         
         // Log that we're using the real initializer
         logger.info("PlaceDetailViewModel initialized with real MapViewModel")
     }
     
     // Method to update the service after initialization - no longer needed but kept for compatibility
-    func updateService(_ newService: GooglePlacesServiceProtocol) {
+    func updateService(_ newService: BackendService) {
         // Cancel any pending requests on the old service
         self.service.cancelPlaceDetailsRequests()
         // Update to the new service

@@ -83,16 +83,30 @@ struct PlaceDetails: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         photos = try container.decode([String].self, forKey: .photos)
         
-        // Convert from codable format back to tuples
-        let codableReviews = try container.decode([[String: String]].self, forKey: .reviews)
-        reviews = codableReviews.compactMap { dict in
-            guard let author = dict["author"],
-                  let text = dict["text"],
-                  let ratingString = dict["rating"],
-                  let rating = Int(ratingString) else {
-                return nil
+        // First try to decode as array of dictionaries with string values (original format)
+        do {
+            let codableReviews = try container.decode([[String: String]].self, forKey: .reviews)
+            reviews = codableReviews.compactMap { dict in
+                guard let author = dict["author"],
+                      let text = dict["text"],
+                      let ratingString = dict["rating"],
+                      let rating = Int(ratingString) else {
+                    return nil
+                }
+                return (author, text, rating)
             }
-            return (author, text, rating)
+        } catch {
+            // If that fails, try to decode as array of objects with typed values (web backend format)
+            struct WebReview: Codable {
+                let author: String
+                let text: String
+                let rating: Int
+            }
+            
+            let webReviews = try container.decode([WebReview].self, forKey: .reviews)
+            reviews = webReviews.map { review in
+                return (review.author, review.text, review.rating)
+            }
         }
     }
 }

@@ -29,6 +29,8 @@ struct EmojiSelector: View {
             }
             .buttonStyle(EmojiButtonStyle())
             .disabled(viewModel.isLoading)
+            .scaleEffect(viewModel.showFavoritesOnly ? 1.1 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.showFavoritesOnly)
             
             // MARK: - Middle Section: Emoji Categories
             ScrollViewReader { scrollProxy in
@@ -63,27 +65,43 @@ struct EmojiSelector: View {
                             .buttonStyle(EmojiButtonStyle())
                             .disabled(viewModel.isLoading)
                             .id("all") // ID for scrolling
+                            .scaleEffect(viewModel.isAllCategoriesMode ? 1.1 : 1.0)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.isAllCategoriesMode)
                         
                             // Show all categories in a single row for standard scrolling
                             ForEach(viewModel.categories, id: \.1) { category in
                                 let emoji = category.0
                                 let categoryName = category.1
+                                let isSelected = viewModel.selectedCategories.contains(categoryName) && !viewModel.isAllCategoriesMode
                                 
                                 Button(action: {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                         viewModel.toggleCategory(categoryName)
                                         selectionFeedback.impactOccurred(intensity: 0.8)
+                                        
+                                        // Scroll to the selected category if it's newly selected
+                                        if !viewModel.isAllCategoriesMode && viewModel.selectedCategories.contains(categoryName) {
+                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                                scrollProxy.scrollTo(categoryName, anchor: .center)
+                                            }
+                                        }
                                     }
                                 }) {
                                     EmojiButton(
                                         emoji: emoji,
-                                        isSelected: viewModel.selectedCategories.contains(categoryName) && !viewModel.isAllCategoriesMode,
+                                        isSelected: isSelected,
                                         isLoading: viewModel.isLoading
                                     )
                                 }
                                 .buttonStyle(EmojiButtonStyle())
                                 .disabled(viewModel.isLoading)
                                 .id(categoryName) // ID for scrolling
+                                .scaleEffect(isSelected ? 1.1 : 1.0)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSelected)
+                                .transition(.asymmetric(
+                                    insertion: .scale.combined(with: .opacity),
+                                    removal: .scale.combined(with: .opacity)
+                                ))
                             }
                         }
                         .padding(.vertical, 4) // Reduced vertical padding
@@ -115,6 +133,15 @@ struct EmojiSelector: View {
                     selectionFeedback.prepare()
                     scrollFeedback.prepare()
                     edgeFeedback.prepare()
+                    
+                    // Initial scroll to selected category if not in "All" mode
+                    if !viewModel.isAllCategoriesMode && !viewModel.selectedCategories.isEmpty {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                scrollProxy.scrollTo(viewModel.selectedCategories.first!, anchor: .center)
+                            }
+                        }
+                    }
                 }
                 // Simplified gesture for haptic feedback during scrolling
                 .simultaneousGesture(
@@ -142,6 +169,20 @@ struct EmojiSelector: View {
                             isDragging = false
                         }
                 )
+                // React to changes in selection
+                .onChange(of: viewModel.selectedCategories) { oldValue, newValue in
+                    // If we have a single selected category and not in "All" mode, scroll to it
+                    if !viewModel.isAllCategoriesMode && newValue.count == 1 {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                            scrollProxy.scrollTo(newValue.first!, anchor: .center)
+                        }
+                    } else if viewModel.isAllCategoriesMode {
+                        // If in "All" mode, scroll to the "all" button
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                            scrollProxy.scrollTo("all", anchor: .center)
+                        }
+                    }
+                }
             }
             
             // MARK: - Right Section: Shuffle Button
@@ -166,6 +207,9 @@ struct EmojiSelector: View {
             }
             .buttonStyle(EmojiButtonStyle())
             .disabled(viewModel.isLoading || viewModel.filteredPlaces.isEmpty)
+            .scaleEffect(isShuffleActive ? 1.2 : 1.0)
+            .rotationEffect(isShuffleActive ? .degrees(180) : .degrees(0))
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isShuffleActive)
         }
         .padding(.horizontal, 12)
         .opacity(viewModel.isLoading ? 0.8 : 1.0)
@@ -181,13 +225,3 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
     }
 }
 
-struct EmojiSelector_Previews: PreviewProvider {
-    static var previews: some View {
-        EmojiSelector()
-            .environmentObject(
-                MapViewModel(googlePlacesService: MockGooglePlacesService())
-            )
-            .previewLayout(.sizeThatFits)
-            .padding()
-    }
-}

@@ -2,12 +2,13 @@ import Foundation
 import CoreLocation
 import MapKit
 
-// Mock implementation of GooglePlacesServiceProtocol for testing and development
-class MockGooglePlacesService: GooglePlacesServiceProtocol {
+/// Mock implementation of BackendService for testing
+class MockBackendService: BackendService {
     private var mockPlaces: [Place]
     private var mockDetails: PlaceDetails?
     
     init(mockPlaces: [Place] = [], mockDetails: PlaceDetails? = nil) {
+        // Initialize properties before calling super.init()
         self.mockDetails = mockDetails
         
         // Default mock places if none are provided
@@ -47,9 +48,12 @@ class MockGooglePlacesService: GooglePlacesServiceProtocol {
         } else {
             self.mockPlaces = mockPlaces
         }
+        
+        // Call super.init() after initializing all properties
+        super.init()
     }
     
-    func fetchPlaces(
+    override func fetchPlaces(
         center: CLLocationCoordinate2D,
         region: MKCoordinateRegion?,
         categories: [(emoji: String, name: String, type: String)],
@@ -79,7 +83,7 @@ class MockGooglePlacesService: GooglePlacesServiceProtocol {
         }
     }
     
-    func fetchPlaceDetails(placeId: String, completion: @escaping (Result<PlaceDetails, NetworkError>) -> Void) {
+    override func fetchPlaceDetails(placeId: String, completion: @escaping (Result<PlaceDetails, NetworkError>) -> Void) {
         // Simulate network delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             // If mockDetails is provided, use it
@@ -104,15 +108,15 @@ class MockGooglePlacesService: GooglePlacesServiceProtocol {
         }
     }
     
-    func cancelPlacesRequests() {
+    override func cancelPlacesRequests() {
         // No-op for mock
     }
     
-    func cancelPlaceDetailsRequests() {
+    override func cancelPlaceDetailsRequests() {
         // No-op for mock
     }
     
-    func cancelAllRequests() {
+    override func cancelAllRequests() {
         // No-op for mock
     }
 } 
