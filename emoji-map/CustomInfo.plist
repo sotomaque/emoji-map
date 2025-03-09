@@ -29,7 +29,7 @@
 		<string>maps</string>
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>We need your location to show nearby places.</string>
+	<string>EmojiMap uses your location to find and display nearby restaurants, cafes, and other points of interest on the map. For example, we'll show you coffee shops within walking distance of your current location.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>
