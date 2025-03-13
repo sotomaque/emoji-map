@@ -400,20 +400,6 @@ class PlacesRequestHandler {
                 } else {
                     logger.error("'data' key does not exist in response")
                 }
-                
-                // Check the type of cacheHit
-                if let cacheHit = jsonDict["cacheHit"] {
-//                    logger.notice("'cacheHit' key exists with type: \(type(of: cacheHit)) and value: \(cacheHit)")
-                } else {
-                    logger.error("'cacheHit' key does not exist in response")
-                }
-                
-                // Check the type of count
-                if let count = jsonDict["count"] {
-//                    logger.notice("'count' key exists with type: \(type(of: count)) and value: \(count)")
-                } else {
-                    logger.error("'count' key does not exist in response")
-                }
             }
             
             // Create a custom decoder with more lenient options

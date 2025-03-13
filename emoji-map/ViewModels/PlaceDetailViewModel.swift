@@ -15,10 +15,20 @@ import Combine
 @MainActor
 class PlaceDetailViewModel: ObservableObject {
     @Published var photos: [String] = []
-    @Published var reviews: [(String, String, Int)] = []
+    @Published var reviews: [(String, String, Int, String)] = []
     @Published var error: NetworkError?
+    @Published var isLoading = false
     @Published var showError = false
     @Published var distanceFromUser: Double? = nil
+    
+    // Store the place details for access to additional fields
+    private var placeDetails: PlaceDetails?
+    private var place: Place?
+    
+    // Computed property to get the place name from the details
+    var placeName: String? {
+        return placeDetails?.name
+    }
     
     // Flag to track if the view model has been properly initialized with a real MapViewModel
     private var isInitialized = false
@@ -42,7 +52,7 @@ class PlaceDetailViewModel: ObservableObject {
     
     // Computed property to convert tuple reviews to Review objects
     var reviewObjects: [Review] {
-        return reviews.map { Review(authorName: $0.0, text: $0.1, rating: $0.2) }
+        return reviews.map { Review(authorName: $0.0, text: $0.1, rating: $0.2, relativeTimeDescription: $0.3) }
     }
     
     // Computed property to format the distance in a user-friendly way
@@ -116,14 +126,14 @@ class PlaceDetailViewModel: ObservableObject {
     
     // Fetch details that require network requests
     private func fetchNetworkDetails(for place: Place) {
-        // Use a task to delay showing the loading indicator
-        let loadingTask = Task { @MainActor in
-            // Wait a short delay before showing loading indicator
-            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
-            if !Task.isCancelled {
-                // isLoading = true
-            }
-        }
+        // Set loading state immediately to avoid delay
+        isLoading = true
+        
+        // Store the place object
+        self.place = place
+        
+        // Log the start of the fetch operation
+        logger.info("Starting fetchNetworkDetails for place: \(place.name) (ID: \(place.placeId))")
         
         error = nil
         showError = false
@@ -134,45 +144,97 @@ class PlaceDetailViewModel: ObservableObject {
         if let cachedDetails = cache.retrievePlaceDetails(forPlaceId: place.placeId) {
             logger.info("Using cached details for place ID: \(place.placeId)")
             
-            // Cancel the loading indicator task if it hasn't shown yet
-            loadingTask.cancel()
-            // isLoading = false
+            // Store the cached details
+            self.placeDetails = cachedDetails
             
             // Update UI with cached data
             self.photos = cachedDetails.photos
             self.reviews = cachedDetails.reviews
+            
+            // Set loading state to false
+            isLoading = false
+            
+            logger.info("Loaded cached details for place ID: \(place.placeId)")
             return
         }
         
         // No cache hit, need to fetch from network
-        logger.info("Fetching details from network for place ID: \(place.placeId)")
+        logger.info("No cache hit, fetching details from network for place ID: \(place.placeId)")
         
         // Only cancel previous requests if the place ID has changed
         if currentPlaceId != place.placeId {
+            logger.info("Cancelling previous requests for different place ID")
             service.cancelPlaceDetailsRequests()
         }
         
         // Use Task to call the async API
         Task {
+            logger.info("Starting async task to fetch details for place ID: \(place.placeId)")
+            
             do {
+                let startTime = Date()
                 let details = try await service.fetchPlaceDetails(placeId: place.placeId)
+                let fetchTime = Date().timeIntervalSince(startTime)
+                
+                logger.info("Fetch completed in \(fetchTime) seconds for place ID: \(place.placeId)")
                 
                 // Update UI on the main thread
                 await MainActor.run {
-                    // Cancel the loading indicator task if it hasn't shown yet
-                    loadingTask.cancel()
-                    // isLoading = false
+                    logger.info("Updating UI on main thread for place ID: \(place.placeId)")
+                    
+                    // Set loading state to false
+                    isLoading = false
                     
                     self.logger.info("Successfully fetched details for place ID: \(place.placeId)")
+                    
+                    // Log the received data
+                    self.logger.info("Received \(details.photos.count) photos")
+                    self.logger.info("Received \(details.reviews.count) reviews")
+                    
+                    if let name = details.name {
+                        self.logger.info("Place name: \(name)")
+                    }
+                    
+                    if let rating = details.rating {
+                        self.logger.info("Place rating: \(rating)")
+                    }
+                    
+                    if let priceLevel = details.priceLevel {
+                        self.logger.info("Price level: \(priceLevel)")
+                    }
+                    
+                    if let primaryType = details.primaryTypeDisplayName {
+                        self.logger.info("Primary type: \(primaryType)")
+                    }
+                    
+                    if let summary = details.generativeSummary {
+                        self.logger.info("Summary: \(summary)")
+                    }
+                    
+                    // Log the first review if available
+                    if let firstReview = details.reviews.first {
+                        self.logger.info("First review - Author: \(firstReview.author)")
+                        self.logger.info("First review - Text: \(firstReview.text)")
+                        self.logger.info("First review - Rating: \(firstReview.rating)")
+                        self.logger.info("First review - Time: \(firstReview.relativeTime)")
+                    }
+                    
+                    // Update UI with data
                     self.photos = details.photos
                     self.reviews = details.reviews
+                    
+                    // Store the details
+                    self.placeDetails = details
+                    
+                    logger.info("UI update completed for place ID: \(place.placeId)")
                 }
             } catch {
                 // Handle errors on the main thread
                 await MainActor.run {
-                    // Cancel the loading indicator task if it hasn't shown yet
-                    loadingTask.cancel()
-                    // isLoading = false
+                    logger.error("Error fetching details for place ID: \(place.placeId) - \(error.localizedDescription)")
+                    
+                    // Set loading state to false
+                    isLoading = false
                     
                     if let networkError = error as? NetworkError {
                         self.error = networkError
@@ -189,6 +251,8 @@ class PlaceDetailViewModel: ObservableObject {
                         self.showError = networkError.shouldShowAlert
                         self.logger.error("Error fetching place details: \(networkError.localizedDescription)")
                     }
+                    
+                    logger.error("Error handling completed for place ID: \(place.placeId)")
                 }
             }
         }

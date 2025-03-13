@@ -94,6 +94,7 @@ extension PreventDismissView.PreventDismissController: UIAdaptivePresentationCon
     }
 }
 
+// TODO: move to Extensions folder
 // Extension to add the modifier to any view
 extension View {
     func preventDismissal(when condition: Bool) -> some View {
@@ -101,6 +102,7 @@ extension View {
     }
 }
 
+//
 struct PlaceDetailView: View {
     let place: Place
     @StateObject private var viewModel: PlaceDetailViewModel
@@ -116,6 +118,8 @@ struct PlaceDetailView: View {
     // Initialize with the place and create the view model with the shared service
     init(place: Place) {
         self.place = place
+        
+        print("PLACE: \(place)")
         
         // Use the default initializer which creates a dummy MapViewModel
         // The real MapViewModel will be set in onAppear from the environment
@@ -156,6 +160,18 @@ struct PlaceDetailView: View {
                     .padding(.top, 20)
                 }
                 
+                // Add a loading indicator at the bottom if still loading
+                if viewModel.isLoading && isAppearing {
+                    VStack {
+                        ProgressView()
+                            .padding()
+                        Text("Loading details...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 20)
+                }
+                
                 Spacer()
             }
             .padding(.vertical)
@@ -163,10 +179,22 @@ struct PlaceDetailView: View {
             .animation(.easeIn(duration: 0.3), value: isAppearing)
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle(place.name)
-        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                if viewModel.isLoading {
+                    // Shimmering placeholder for title
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 80, height: 20)
+                        .shimmering()
+                } else {
+                    Text(viewModel.placeName ?? "")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                }
+            }
+            
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: {
                     logger.debug("🔍 DEBUG: Close button tapped, dismissing sheet")
@@ -190,13 +218,25 @@ struct PlaceDetailView: View {
             }
         }
         .overlay(
-            // Full-screen loading overlay
+            // Full-screen loading overlay - only show before content appears
             ZStack {
                 if viewModel.isLoading && !isAppearing {
                     Color(.systemBackground)
                         .edgesIgnoringSafeArea(.all)
                     
-                    LoadingIndicator(message: "Loading details...")
+                    VStack {
+                        LoadingIndicator(message: "Loading details...")
+                        
+                        // Add a cancel button after a few seconds
+                        if viewModel.isLoading {
+                            Button("Cancel") {
+                                logger.debug("🔍 DEBUG: Cancel loading button tapped")
+                                customDismiss()
+                            }
+                            .padding(.top, 20)
+                            .foregroundColor(.blue)
+                        }
+                    }
                 }
             }
         )
@@ -207,6 +247,7 @@ struct PlaceDetailView: View {
             viewModel.updateMapViewModel(mapViewModel)
             
             // Fetch details for the place
+            logger.debug("🔍 DEBUG: Calling fetchDetails for place: \(place.name)")
             viewModel.fetchDetails(for: place)
             
             // Calculate distance from user once (static)
@@ -214,6 +255,7 @@ struct PlaceDetailView: View {
             
             // Slight delay before showing content for smoother transition
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                logger.debug("🔍 DEBUG: Setting isAppearing to true")
                 isAppearing = true
             }
             
@@ -254,7 +296,7 @@ struct PlaceDetailView: View {
     }
     
     private func toggleFavorite() {
-        logger.debug("🔍 DEBUG: toggleFavorite called for place: \(place.name)")
+        logger.debug("🔍 DEBUG: toggleFavorite called for place: \(viewModel.placeName ?? "")")
         
         // Toggle favorite directly in the view model
         viewModel.toggleFavorite()
@@ -352,15 +394,34 @@ struct PlaceDetailView: View {
     
     private var placeInfoSection: some View {
         VStack(spacing: 8) {
-            Text(place.name)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .multilineTextAlignment(.center)
-            
-            Text(place.description)
-                .font(.system(size: 16, weight: .regular, design: .rounded))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+            if viewModel.isLoading {
+                // Skeleton loading for place name
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: 200, height: 32)
+                    .shimmering()
+                
+                // Skeleton loading for description
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: 280, height: 16)
+                    .shimmering()
+                
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: 240, height: 16)
+                    .shimmering()
+            } else {
+                Text(viewModel.placeName ?? "")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.center)
+                
+                Text(place.description)
+                    .font(.system(size: 16, weight: .regular, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
             
             // Display user rating if available
             if viewModel.userRating > 0 {
@@ -480,7 +541,7 @@ struct PlaceDetailView: View {
                     hasBorder: true,
                     action: {
                         logger.debug("🔍 DEBUG: View on Map button tapped")
-                        // Use the default map app to view the location
+                        // Use the default map app
                         let defaultMapAppName = mapViewModel.preferences.defaultMapApp
                         let installedApps = MapAppUtility.shared.getInstalledMapApps()
                         
@@ -490,14 +551,14 @@ struct PlaceDetailView: View {
                             MapAppUtility.shared.openInMapApp(
                                 mapApp: defaultApp,
                                 coordinate: place.coordinate,
-                                name: place.name
+                                name: viewModel.placeName ?? ""
                             )
                         } else if let firstApp = installedApps.first {
                             // Use the first available map app if default is not found
                             MapAppUtility.shared.openInMapApp(
                                 mapApp: firstApp,
                                 coordinate: place.coordinate,
-                                name: place.name
+                                name: viewModel.placeName ?? ""
                             )
                         }
                         
@@ -517,7 +578,7 @@ struct PlaceDetailView: View {
                             MapAppUtility.shared.openInMapApp(
                                 mapApp: app,
                                 coordinate: place.coordinate,
-                                name: place.name
+                                name: viewModel.placeName ?? ""
                             )
                             customDismiss()
                         } label: {
@@ -611,3 +672,41 @@ struct PlaceDetailView: View {
     }
 }
 
+
+// TODO: PREVIEW
+
+// MARK: - Shimmering Effect
+extension View {
+    func shimmering() -> some View {
+        self.modifier(ShimmeringEffect())
+    }
+}
+
+struct ShimmeringEffect: ViewModifier {
+    @State private var phase: CGFloat = 0
+    
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                GeometryReader { geo in
+                    LinearGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: .clear, location: phase - 0.2),
+                            .init(color: .white.opacity(0.5), location: phase),
+                            .init(color: .clear, location: phase + 0.2)
+                        ]),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .blendMode(.screen)
+                    .mask(content)
+                    .offset(x: -geo.size.width + (geo.size.width * 3 * phase))
+                }
+            )
+            .onAppear {
+                withAnimation(Animation.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                    self.phase = 1
+                }
+            }
+    }
+}

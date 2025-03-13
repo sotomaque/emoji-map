@@ -49,6 +49,31 @@ class MockBackendService: BackendService {
             self.mockPlaces = mockPlaces
         }
         
+        // If no mock details are provided, create a default one
+        if self.mockDetails == nil {
+            self.mockDetails = PlaceDetails(
+                photos: [
+                    "https://example.com/mock_photo_1.jpg",
+                    "https://example.com/mock_photo_2.jpg"
+                ],
+                reviews: [
+                    ("Mock Reviewer 1", "This place is great!", 5, "2 days ago"),
+                    ("Mock Reviewer 2", "Good food, but a bit pricey.", 4, "1 week ago")
+                ],
+                name: "Mock Restaurant",
+                rating: 4.5,
+                priceLevel: 2,
+                userRatingCount: 42,
+                openNow: true,
+                primaryTypeDisplayName: "Restaurant",
+                generativeSummary: "A cozy mock restaurant with great food and friendly service.",
+                takeout: true,
+                delivery: true,
+                dineIn: true,
+                outdoorSeating: true
+            )
+        }
+        
         // Call super.init() after initializing all properties
         super.init()
     }
@@ -93,25 +118,22 @@ class MockBackendService: BackendService {
     override func fetchPlaceDetails(placeId: String, completion: @escaping (Result<PlaceDetails, NetworkError>) -> Void) {
         // Simulate network delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            // If mockDetails is provided, use it
+            // Use the mockDetails created in the initializer
             if let mockDetails = self.mockDetails {
                 completion(.success(mockDetails))
                 return
             }
             
-            // Otherwise create default mock place details
-            let defaultMockDetails = PlaceDetails(
-                photos: [
-                    "https://example.com/mock_photo_1.jpg",
-                    "https://example.com/mock_photo_2.jpg"
-                ],
-                reviews: [
-                    ("Mock Reviewer 1", "This place is great!", 5),
-                    ("Mock Reviewer 2", "Good food, but a bit pricey.", 4)
-                ]
+            // This should never happen since we create a default mockDetails in the initializer
+            // But just in case, create a minimal PlaceDetails
+            let fallbackDetails = PlaceDetails(
+                photos: [],
+                reviews: [],
+                rating: nil,
+                priceLevel: nil
             )
             
-            completion(.success(defaultMockDetails))
+            completion(.success(fallbackDetails))
         }
     }
     
@@ -169,23 +191,18 @@ class MockBackendService: BackendService {
         // Simulate network delay
         try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
         
-        // If mockDetails is provided, use it
+        // Use the mockDetails created in the initializer
         if let mockDetails = self.mockDetails {
             return mockDetails
         }
         
-        // Otherwise create default mock place details
-        let defaultMockDetails = PlaceDetails(
-            photos: [
-                "https://example.com/mock_photo_1.jpg",
-                "https://example.com/mock_photo_2.jpg"
-            ],
-            reviews: [
-                ("Mock Reviewer 1", "This place is great!", 5),
-                ("Mock Reviewer 2", "Good food, but a bit pricey.", 4)
-            ]
+        // This should never happen since we create a default mockDetails in the initializer
+        // But just in case, create a minimal PlaceDetails
+        return PlaceDetails(
+            photos: [],
+            reviews: [],
+            rating: nil,
+            priceLevel: nil
         )
-        
-        return defaultMockDetails
     }
 } 
