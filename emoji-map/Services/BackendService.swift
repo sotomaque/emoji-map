@@ -74,7 +74,7 @@ class BackendService: GooglePlacesServiceProtocol {
     func fetchPlaces(
         center: CLLocationCoordinate2D,
         region: MKCoordinateRegion?,
-        categories: [(emoji: String, name: String, type: String)],
+        categories: [String]?,
         showOpenNowOnly: Bool,
         completion: @escaping (Result<[Place], NetworkError>) -> Void
     ) {
@@ -90,6 +90,40 @@ class BackendService: GooglePlacesServiceProtocol {
     func fetchPlaceDetails(placeId: String, completion: @escaping (Result<PlaceDetails, NetworkError>) -> Void) {
         placeDetailsHandler.fetchPlaceDetails(placeId: placeId, completion: completion)
     }
+    
+    // MARK: - Async/Await API
+    
+    /// Async version of fetchPlaces that uses Swift's structured concurrency
+    /// - Parameters:
+    ///   - center: The center coordinate to search around
+    ///   - region: Optional region to determine search radius
+    ///   - categories: Categories to search for
+    ///   - showOpenNowOnly: Whether to only show places that are open now
+    /// - Returns: Array of places
+    /// - Throws: NetworkError if the request fails
+    func fetchPlaces(
+        center: CLLocationCoordinate2D,
+        region: MKCoordinateRegion?,
+        categories: [String]?,
+        showOpenNowOnly: Bool
+    ) async throws -> [Place] {
+        return try await placesHandler.fetchPlaces(
+            center: center,
+            region: region,
+            categories: categories,
+            showOpenNowOnly: showOpenNowOnly
+        )
+    }
+    
+    /// Async version of fetchPlaceDetails that uses Swift's structured concurrency
+    /// - Parameter placeId: The ID of the place to fetch details for
+    /// - Returns: The place details
+    /// - Throws: NetworkError if the request fails
+    func fetchPlaceDetails(placeId: String) async throws -> PlaceDetails {
+        return try await placeDetailsHandler.fetchPlaceDetails(placeId: placeId)
+    }
+    
+    // MARK: - Task Management
     
     func cancelAllRequests() {
         cancelPlacesRequests()

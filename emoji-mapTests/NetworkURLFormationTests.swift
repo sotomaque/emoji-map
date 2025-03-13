@@ -18,11 +18,11 @@ class NetworkURLFormationTests: XCTestCase {
         center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
         span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
     )
-    let testCategories = [
-        ("🍕", "pizza", "restaurant"),
-        ("🍺", "beer", "bar"),
-        ("🍣", "sushi", "restaurant")
-    ]
+    
+    // Use CategoryMappings to create test categories
+    lazy var testCategories: [String] = {
+        return ["🍕", "🍺", "🍣"]
+    }()
     
     // Custom NetworkRequestManager for testing
     class TestNetworkRequestManager: NetworkRequestManager {
@@ -86,17 +86,28 @@ class NetworkURLFormationTests: XCTestCase {
             pathComponents: ["api", "places", "nearby"]
         )
         
-        // Create parameters for the request
+        // Create URL components to manually add the keys parameter multiple times
+        var components = URLComponents(url: nearbyEndpoint, resolvingAgainstBaseURL: true)
+        
+        // Create basic parameters
         let parameters: [String: String] = [
             "location": "\(testCenter.latitude),\(testCenter.longitude)",
-            "radius": "\(Configuration.defaultSearchRadius)",
             "type": "restaurant",  // Testing with just one type
-            "keywords": "pizza,sushi", // Testing with just restaurant categories
             "open_now": showOpenNowOnly ? "true" : "false"
         ]
         
-        // Create the URL with parameters
-        let url = networkManager.createURL(baseURL: nearbyEndpoint, parameters: parameters)
+        // Start with the basic parameters
+        var queryItems = parameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        
+        // Add keys for pizza (1) and sushi (3)
+        queryItems.append(URLQueryItem(name: "keys", value: "1"))
+        queryItems.append(URLQueryItem(name: "keys", value: "3"))
+        
+        // Set the query items
+        components?.queryItems = queryItems
+        
+        // Get the final URL
+        let url = components?.url
         
         // Verify the URL
         XCTAssertNotNil(url, "URL should be created successfully")
@@ -104,9 +115,11 @@ class NetworkURLFormationTests: XCTestCase {
         // Check that the URL contains the expected parameters
         let urlString = url?.absoluteString ?? ""
         XCTAssertTrue(urlString.contains("location=37.7749,-122.4194"), "URL should contain the correct location")
-        XCTAssertTrue(urlString.contains("radius=5000"), "URL should contain the correct radius")
+        XCTAssertFalse(urlString.contains("radius="), "URL should not contain radius parameter")
         XCTAssertTrue(urlString.contains("type=restaurant"), "URL should contain the correct type")
-        XCTAssertTrue(urlString.contains("keywords=pizza,sushi"), "URL should contain the correct keywords")
+        XCTAssertFalse(urlString.contains("keywords="), "URL should not contain keywords parameter")
+        XCTAssertTrue(urlString.contains("keys=1"), "URL should contain the keys=1 parameter")
+        XCTAssertTrue(urlString.contains("keys=3"), "URL should contain the keys=3 parameter")
         XCTAssertTrue(urlString.contains("open_now=false"), "URL should contain open_now=false")
     }
     
@@ -120,17 +133,28 @@ class NetworkURLFormationTests: XCTestCase {
             pathComponents: ["api", "places", "nearby"]
         )
         
-        // Create parameters for the request
+        // Create URL components to manually add the keys parameter multiple times
+        var components = URLComponents(url: nearbyEndpoint, resolvingAgainstBaseURL: true)
+        
+        // Create basic parameters
         let parameters: [String: String] = [
             "location": "\(testCenter.latitude),\(testCenter.longitude)",
-            "radius": "\(Configuration.defaultSearchRadius)",
             "type": "restaurant",
-            "keywords": "pizza,sushi",
             "open_now": showOpenNowOnly ? "true" : "false"
         ]
         
-        // Create the URL with parameters
-        let url = networkManager.createURL(baseURL: nearbyEndpoint, parameters: parameters)
+        // Start with the basic parameters
+        var queryItems = parameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        
+        // Add keys for pizza (1) and sushi (3)
+        queryItems.append(URLQueryItem(name: "keys", value: "1"))
+        queryItems.append(URLQueryItem(name: "keys", value: "3"))
+        
+        // Set the query items
+        components?.queryItems = queryItems
+        
+        // Get the final URL
+        let url = components?.url
         
         // Verify the URL
         XCTAssertNotNil(url, "URL should be created successfully")
@@ -138,6 +162,10 @@ class NetworkURLFormationTests: XCTestCase {
         // Check that the URL contains the expected parameters
         let urlString = url?.absoluteString ?? ""
         XCTAssertTrue(urlString.contains("open_now=true"), "URL should contain open_now=true")
+        XCTAssertFalse(urlString.contains("radius="), "URL should not contain radius parameter")
+        XCTAssertFalse(urlString.contains("keywords="), "URL should not contain keywords parameter")
+        XCTAssertTrue(urlString.contains("keys=1"), "URL should contain the keys=1 parameter")
+        XCTAssertTrue(urlString.contains("keys=3"), "URL should contain the keys=3 parameter")
     }
     
     func testURLFormationWithDifferentTypes() {
@@ -150,15 +178,28 @@ class NetworkURLFormationTests: XCTestCase {
             pathComponents: ["api", "places", "nearby"]
         )
         
+        // Create URL components for restaurant
+        var restaurantComponents = URLComponents(url: restaurantEndpoint, resolvingAgainstBaseURL: true)
+        
+        // Create basic parameters for restaurant
         let restaurantParameters: [String: String] = [
             "location": "\(testCenter.latitude),\(testCenter.longitude)",
-            "radius": "\(Configuration.defaultSearchRadius)",
             "type": "restaurant",
-            "keywords": "pizza,sushi",
             "open_now": showOpenNowOnly ? "true" : "false"
         ]
         
-        let restaurantURL = networkManager.createURL(baseURL: restaurantEndpoint, parameters: restaurantParameters)
+        // Start with the basic parameters
+        var restaurantQueryItems = restaurantParameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        
+        // Add keys for pizza (1) and sushi (3)
+        restaurantQueryItems.append(URLQueryItem(name: "keys", value: "1"))
+        restaurantQueryItems.append(URLQueryItem(name: "keys", value: "3"))
+        
+        // Set the query items
+        restaurantComponents?.queryItems = restaurantQueryItems
+        
+        // Get the final URL
+        let restaurantURL = restaurantComponents?.url
         
         // Test with bar type
         let barEndpoint = networkManager.createURLWithPath(
@@ -166,15 +207,27 @@ class NetworkURLFormationTests: XCTestCase {
             pathComponents: ["api", "places", "nearby"]
         )
         
+        // Create URL components for bar
+        var barComponents = URLComponents(url: barEndpoint, resolvingAgainstBaseURL: true)
+        
+        // Create basic parameters for bar
         let barParameters: [String: String] = [
             "location": "\(testCenter.latitude),\(testCenter.longitude)",
-            "radius": "\(Configuration.defaultSearchRadius)",
             "type": "bar",
-            "keywords": "beer",
             "open_now": showOpenNowOnly ? "true" : "false"
         ]
         
-        let barURL = networkManager.createURL(baseURL: barEndpoint, parameters: barParameters)
+        // Start with the basic parameters
+        var barQueryItems = barParameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        
+        // Add key for beer (2)
+        barQueryItems.append(URLQueryItem(name: "keys", value: "2"))
+        
+        // Set the query items
+        barComponents?.queryItems = barQueryItems
+        
+        // Get the final URL
+        let barURL = barComponents?.url
         
         // Verify the URLs
         XCTAssertNotNil(restaurantURL, "Restaurant URL should be created successfully")
@@ -185,10 +238,13 @@ class NetworkURLFormationTests: XCTestCase {
         let barURLString = barURL?.absoluteString ?? ""
         
         XCTAssertTrue(restaurantURLString.contains("type=restaurant"), "URL should contain the correct type")
-        XCTAssertTrue(restaurantURLString.contains("keywords=pizza,sushi"), "URL should contain the correct keywords")
+        XCTAssertFalse(restaurantURLString.contains("keywords="), "URL should not contain keywords parameter")
+        XCTAssertTrue(restaurantURLString.contains("keys=1"), "URL should contain the keys=1 parameter")
+        XCTAssertTrue(restaurantURLString.contains("keys=3"), "URL should contain the keys=3 parameter")
         
         XCTAssertTrue(barURLString.contains("type=bar"), "URL should contain the correct type")
-        XCTAssertTrue(barURLString.contains("keywords=beer"), "URL should contain the correct keywords")
+        XCTAssertFalse(barURLString.contains("keywords="), "URL should not contain keywords parameter")
+        XCTAssertTrue(barURLString.contains("keys=2"), "URL should contain the keys=2 parameter")
     }
     
     // MARK: - Price Level Filter Tests
@@ -209,18 +265,29 @@ class NetworkURLFormationTests: XCTestCase {
             pathComponents: ["api", "places", "nearby"]
         )
         
-        // Create parameters for the request with price_level=1
+        // Create URL components to manually add the keys parameter multiple times
+        var components = URLComponents(url: nearbyEndpoint, resolvingAgainstBaseURL: true)
+        
+        // Create basic parameters
         let parameters: [String: String] = [
             "location": "\(testCenter.latitude),\(testCenter.longitude)",
-            "radius": "\(Configuration.defaultSearchRadius)",
             "type": "restaurant",
-            "keywords": "pizza,sushi",
             "open_now": "false",
             "price_level": "1"  // Add price level parameter
         ]
         
-        // Create the URL with parameters
-        let url = networkManager.createURL(baseURL: nearbyEndpoint, parameters: parameters)
+        // Start with the basic parameters
+        var queryItems = parameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        
+        // Add keys for pizza (1) and sushi (3)
+        queryItems.append(URLQueryItem(name: "keys", value: "1"))
+        queryItems.append(URLQueryItem(name: "keys", value: "3"))
+        
+        // Set the query items
+        components?.queryItems = queryItems
+        
+        // Get the final URL
+        let url = components?.url
         
         // Verify the URL
         XCTAssertNotNil(url, "URL should be created successfully")
@@ -228,6 +295,10 @@ class NetworkURLFormationTests: XCTestCase {
         // Check that the URL contains the expected parameters
         let urlString = url?.absoluteString ?? ""
         XCTAssertTrue(urlString.contains("price_level=1"), "URL should contain price_level=1")
+        XCTAssertFalse(urlString.contains("radius="), "URL should not contain radius parameter")
+        XCTAssertFalse(urlString.contains("keywords="), "URL should not contain keywords parameter")
+        XCTAssertTrue(urlString.contains("keys=1"), "URL should contain the keys=1 parameter")
+        XCTAssertTrue(urlString.contains("keys=3"), "URL should contain the keys=3 parameter")
         
         // Fulfill the expectation
         expectation.fulfill()
@@ -252,18 +323,29 @@ class NetworkURLFormationTests: XCTestCase {
             pathComponents: ["api", "places", "nearby"]
         )
         
-        // Create parameters for the request with price_level=1,2
+        // Create URL components to manually add the keys parameter multiple times
+        var components = URLComponents(url: nearbyEndpoint, resolvingAgainstBaseURL: true)
+        
+        // Create basic parameters
         let parameters: [String: String] = [
             "location": "\(testCenter.latitude),\(testCenter.longitude)",
-            "radius": "\(Configuration.defaultSearchRadius)",
             "type": "restaurant",
-            "keywords": "pizza,sushi",
             "open_now": "false",
             "price_level": "1,2"  // Add multiple price levels
         ]
         
-        // Create the URL with parameters
-        let url = networkManager.createURL(baseURL: nearbyEndpoint, parameters: parameters)
+        // Start with the basic parameters
+        var queryItems = parameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        
+        // Add keys for pizza (1) and sushi (3)
+        queryItems.append(URLQueryItem(name: "keys", value: "1"))
+        queryItems.append(URLQueryItem(name: "keys", value: "3"))
+        
+        // Set the query items
+        components?.queryItems = queryItems
+        
+        // Get the final URL
+        let url = components?.url
         
         // Verify the URL
         XCTAssertNotNil(url, "URL should be created successfully")
@@ -272,6 +354,10 @@ class NetworkURLFormationTests: XCTestCase {
         let urlString = url?.absoluteString ?? ""
         XCTAssertTrue(urlString.contains("price_level=1,2") || urlString.contains("price_level=1%2C2"), 
                      "URL should contain price_level=1,2 or its URL-encoded equivalent")
+        XCTAssertFalse(urlString.contains("radius="), "URL should not contain radius parameter")
+        XCTAssertFalse(urlString.contains("keywords="), "URL should not contain keywords parameter")
+        XCTAssertTrue(urlString.contains("keys=1"), "URL should contain the keys=1 parameter")
+        XCTAssertTrue(urlString.contains("keys=3"), "URL should contain the keys=3 parameter")
         
         // Fulfill the expectation
         expectation.fulfill()
@@ -298,18 +384,29 @@ class NetworkURLFormationTests: XCTestCase {
             pathComponents: ["api", "places", "nearby"]
         )
         
-        // Create parameters for the request with minimum_rating=4
+        // Create URL components to manually add the keys parameter multiple times
+        var components = URLComponents(url: nearbyEndpoint, resolvingAgainstBaseURL: true)
+        
+        // Create basic parameters
         let parameters: [String: String] = [
             "location": "\(testCenter.latitude),\(testCenter.longitude)",
-            "radius": "\(Configuration.defaultSearchRadius)",
             "type": "restaurant",
-            "keywords": "pizza,sushi",
             "open_now": "false",
             "minimum_rating": "4"  // Add minimum rating parameter
         ]
         
-        // Create the URL with parameters
-        let url = networkManager.createURL(baseURL: nearbyEndpoint, parameters: parameters)
+        // Start with the basic parameters
+        var queryItems = parameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        
+        // Add keys for pizza (1) and sushi (3)
+        queryItems.append(URLQueryItem(name: "keys", value: "1"))
+        queryItems.append(URLQueryItem(name: "keys", value: "3"))
+        
+        // Set the query items
+        components?.queryItems = queryItems
+        
+        // Get the final URL
+        let url = components?.url
         
         // Verify the URL
         XCTAssertNotNil(url, "URL should be created successfully")
@@ -317,6 +414,10 @@ class NetworkURLFormationTests: XCTestCase {
         // Check that the URL contains the expected parameters
         let urlString = url?.absoluteString ?? ""
         XCTAssertTrue(urlString.contains("minimum_rating=4"), "URL should contain minimum_rating=4")
+        XCTAssertFalse(urlString.contains("radius="), "URL should not contain radius parameter")
+        XCTAssertFalse(urlString.contains("keywords="), "URL should not contain keywords parameter")
+        XCTAssertTrue(urlString.contains("keys=1"), "URL should contain the keys=1 parameter")
+        XCTAssertTrue(urlString.contains("keys=3"), "URL should contain the keys=3 parameter")
         
         // Fulfill the expectation
         expectation.fulfill()
@@ -343,19 +444,30 @@ class NetworkURLFormationTests: XCTestCase {
             pathComponents: ["api", "places", "nearby"]
         )
         
-        // Create parameters for the request with combined filters
+        // Create URL components to manually add the keys parameter multiple times
+        var components = URLComponents(url: nearbyEndpoint, resolvingAgainstBaseURL: true)
+        
+        // Create basic parameters
         let parameters: [String: String] = [
             "location": "\(testCenter.latitude),\(testCenter.longitude)",
-            "radius": "\(Configuration.defaultSearchRadius)",
             "type": "restaurant",
-            "keywords": "pizza,sushi",
             "open_now": "true",
             "price_level": "2,3",  // $$ and $$$
             "minimum_rating": "3"   // 3+ stars
         ]
         
-        // Create the URL with parameters
-        let url = networkManager.createURL(baseURL: nearbyEndpoint, parameters: parameters)
+        // Start with the basic parameters
+        var queryItems = parameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        
+        // Add keys for pizza (1) and sushi (3)
+        queryItems.append(URLQueryItem(name: "keys", value: "1"))
+        queryItems.append(URLQueryItem(name: "keys", value: "3"))
+        
+        // Set the query items
+        components?.queryItems = queryItems
+        
+        // Get the final URL
+        let url = components?.url
         
         // Verify the URL
         XCTAssertNotNil(url, "URL should be created successfully")
@@ -366,6 +478,10 @@ class NetworkURLFormationTests: XCTestCase {
         XCTAssertTrue(urlString.contains("price_level=2,3") || urlString.contains("price_level=2%2C3"), 
                      "URL should contain price_level=2,3 or its URL-encoded equivalent")
         XCTAssertTrue(urlString.contains("minimum_rating=3"), "URL should contain minimum_rating=3")
+        XCTAssertFalse(urlString.contains("radius="), "URL should not contain radius parameter")
+        XCTAssertFalse(urlString.contains("keywords="), "URL should not contain keywords parameter")
+        XCTAssertTrue(urlString.contains("keys=1"), "URL should contain the keys=1 parameter")
+        XCTAssertTrue(urlString.contains("keys=3"), "URL should contain the keys=3 parameter")
         
         // Fulfill the expectation
         expectation.fulfill()
@@ -401,7 +517,7 @@ class NetworkURLFormationTests: XCTestCase {
         // Test with different categories
         let differentCategoriesKey = cache.generatePlacesCacheKey(
             center: testCenter,
-            categories: [("🍕", "pizza", "restaurant")], // Only pizza
+            categories: ["🍕"], // Only pizza
             showOpenNowOnly: false
         )
         

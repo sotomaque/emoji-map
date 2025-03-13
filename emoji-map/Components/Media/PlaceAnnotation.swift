@@ -4,7 +4,6 @@ struct PlaceAnnotation: View {
     let emoji: String
     let isFavorite: Bool
     let rating: Int?
-    let isLoading: Bool
     let onTap: () -> Void
     
     // Animation states
@@ -68,29 +67,35 @@ struct PlaceAnnotation: View {
                     )
             }
             .offset(y: animateIn ? 0 : -20)
-            .scaleEffect(isLoading ? 0.8 : (animateIn ? 1.0 : 0.01))
-            .opacity(isLoading ? 0.6 : (animateIn ? 1.0 : 0.0))
+            // Only animate scale and opacity for new annotations
+            // Existing annotations will maintain their current state
+            .scaleEffect(animateIn ? 1.0 : 0.01)
+            .opacity(animateIn ? 1.0 : 0.0)
             .animation(.spring(response: 0.5, dampingFraction: 0.7), value: animateIn)
-            .animation(.easeInOut(duration: 0.3), value: isLoading)
         }
         .onAppear {
-            // Trigger entrance animation with a slight delay for staggered effect
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double.random(in: 0.1...0.4)) {
-                withAnimation {
-                    animateIn = true
-                }
-                
-                // Add a bounce effect after the entrance animation
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    bounce = true
+            // Only animate if not already animated
+            if !animateIn {
+                // Trigger entrance animation with a slight delay for staggered effect
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double.random(in: 0.1...0.4)) {
+                    withAnimation {
+                        animateIn = true
+                    }
                     
-                    // Reset bounce after animation completes
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                        bounce = false
+                    // Add a bounce effect after the entrance animation
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        bounce = true
+                        
+                        // Reset bounce after animation completes
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            bounce = false
+                        }
                     }
                 }
             }
         }
+        // Preserve state when view is updated
+        .id("\(emoji)_\(isFavorite)_\(rating ?? 0)")
     }
 }
 
@@ -103,7 +108,6 @@ struct PlaceAnnotationPreview: PreviewProvider {
                 emoji: "🍕",
                 isFavorite: true,
                 rating: 4,
-                isLoading: false,
                 onTap: {}
             )
             
@@ -111,7 +115,6 @@ struct PlaceAnnotationPreview: PreviewProvider {
                 emoji: "🏠",
                 isFavorite: true,
                 rating: nil,
-                isLoading: false,
                 onTap: {}
             )
             
@@ -119,7 +122,6 @@ struct PlaceAnnotationPreview: PreviewProvider {
                 emoji: "🚗",
                 isFavorite: false,
                 rating: 3,
-                isLoading: false,
                 onTap: {}
             )
             
@@ -127,7 +129,6 @@ struct PlaceAnnotationPreview: PreviewProvider {
                 emoji: "🏫",
                 isFavorite: false,
                 rating: nil,
-                isLoading: true,
                 onTap: {}
             )
         }

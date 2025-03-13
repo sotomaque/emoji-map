@@ -69,7 +69,7 @@ protocol GooglePlacesServiceProtocol: AnyObject {
     func fetchPlaces(
         center: CLLocationCoordinate2D,
         region: MKCoordinateRegion?,
-        categories: [(emoji: String, name: String, type: String)],
+        categories: [String]?,
         showOpenNowOnly: Bool,
         completion: @escaping (Result<[Place], NetworkError>) -> Void
     )
@@ -79,6 +79,16 @@ protocol GooglePlacesServiceProtocol: AnyObject {
     func cancelAllRequests()
     func cancelPlacesRequests()
     func cancelPlaceDetailsRequests()
+    
+    // Async/await versions
+    func fetchPlaces(
+        center: CLLocationCoordinate2D,
+        region: MKCoordinateRegion?,
+        categories: [String]?,
+        showOpenNowOnly: Bool
+    ) async throws -> [Place]
+    
+    func fetchPlaceDetails(placeId: String) async throws -> PlaceDetails
 }
 
 /// @deprecated This class is deprecated and should not be used.
@@ -101,7 +111,7 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
     func fetchPlaces(
         center: CLLocationCoordinate2D,
         region: MKCoordinateRegion?,
-        categories: [(emoji: String, name: String, type: String)],
+        categories: [String]?,
         showOpenNowOnly: Bool = false,
         completion: @escaping (Result<[Place], NetworkError>) -> Void
     ) {
@@ -128,5 +138,20 @@ class GooglePlacesService: GooglePlacesServiceProtocol {
     
     deinit {
         logger.debug("GooglePlacesService deinit called")
+    }
+    
+    func fetchPlaces(
+        center: CLLocationCoordinate2D,
+        region: MKCoordinateRegion?,
+        categories: [String]?,
+        showOpenNowOnly: Bool
+    ) async throws -> [Place] {
+        // Implementation of the async version of fetchPlaces
+        throw NetworkError.apiError(message: "GooglePlacesService is deprecated. Use BackendService instead.")
+    }
+    
+    func fetchPlaceDetails(placeId: String) async throws -> PlaceDetails {
+        // Implementation of the async version of fetchPlaceDetails
+        throw NetworkError.apiError(message: "GooglePlacesService is deprecated. Use BackendService instead.")
     }
 }

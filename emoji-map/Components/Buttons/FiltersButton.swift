@@ -2,7 +2,6 @@ import SwiftUI
 
 struct FiltersButton: View {
     let activeFilterCount: Int
-    let isLoading: Bool
     
     var body: some View {
         ZStack {
@@ -19,7 +18,6 @@ struct FiltersButton: View {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(.white)
-                .opacity(isLoading ? 0.5 : 1.0)
             
             // Badge for active filter count
             if activeFilterCount > 0 {
@@ -57,9 +55,9 @@ struct FiltersButton: View {
 struct FiltersButtonPreview: PreviewProvider {
     static var previews: some View {
         HStack(spacing: 20) {
-            FiltersButton(activeFilterCount: 0, isLoading: false)
-            FiltersButton(activeFilterCount: 3, isLoading: false)
-            FiltersButton(activeFilterCount: 5, isLoading: true)
+            FiltersButton(activeFilterCount: 0)
+            FiltersButton(activeFilterCount: 3)
+            FiltersButton(activeFilterCount: 5)
         }
         .padding()
         .previewLayout(.sizeThatFits)

@@ -23,12 +23,10 @@ struct EmojiSelector: View {
                 }
             }) {
                 FavoritesButton(
-                    isSelected: viewModel.showFavoritesOnly,
-                    isLoading: viewModel.isLoading
+                    isSelected: viewModel.showFavoritesOnly
                 )
             }
             .buttonStyle(EmojiButtonStyle())
-            .disabled(viewModel.isLoading)
             .scaleEffect(viewModel.showFavoritesOnly ? 1.1 : 1.0)
             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.showFavoritesOnly)
             
@@ -58,44 +56,38 @@ struct EmojiSelector: View {
                                 }
                             }) {
                                 AllCategoriesButton(
-                                    isSelected: viewModel.isAllCategoriesMode,
-                                    isLoading: viewModel.isLoading
+                                    isSelected: viewModel.isAllCategoriesMode
                                 )
                             }
                             .buttonStyle(EmojiButtonStyle())
-                            .disabled(viewModel.isLoading)
                             .id("all") // ID for scrolling
                             .scaleEffect(viewModel.isAllCategoriesMode ? 1.1 : 1.0)
                             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.isAllCategoriesMode)
                         
                             // Show all categories in a single row for standard scrolling
-                            ForEach(viewModel.categories, id: \.1) { category in
-                                let emoji = category.0
-                                let categoryName = category.1
-                                let isSelected = viewModel.selectedCategories.contains(categoryName) && !viewModel.isAllCategoriesMode
+                            ForEach(viewModel.categoryEmojis, id: \.self) { emoji in
+                                let isSelected = viewModel.selectedCategories.contains(emoji) && !viewModel.isAllCategoriesMode
                                 
                                 Button(action: {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        viewModel.toggleCategory(categoryName)
+                                        viewModel.toggleCategory(emoji)
                                         selectionFeedback.impactOccurred(intensity: 0.8)
                                         
                                         // Scroll to the selected category if it's newly selected
-                                        if !viewModel.isAllCategoriesMode && viewModel.selectedCategories.contains(categoryName) {
+                                        if !viewModel.isAllCategoriesMode && viewModel.selectedCategories.contains(emoji) {
                                             withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                                                scrollProxy.scrollTo(categoryName, anchor: .center)
+                                                scrollProxy.scrollTo(emoji, anchor: .center)
                                             }
                                         }
                                     }
                                 }) {
                                     EmojiButton(
                                         emoji: emoji,
-                                        isSelected: isSelected,
-                                        isLoading: viewModel.isLoading
+                                        isSelected: isSelected
                                     )
                                 }
                                 .buttonStyle(EmojiButtonStyle())
-                                .disabled(viewModel.isLoading)
-                                .id(categoryName) // ID for scrolling
+                                .id(emoji) // ID for scrolling
                                 .scaleEffect(isSelected ? 1.1 : 1.0)
                                 .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSelected)
                                 .transition(.asymmetric(
@@ -201,19 +193,16 @@ struct EmojiSelector: View {
                 }
             }) {
                 ShuffleButton(
-                    isSelected: isShuffleActive,
-                    isLoading: viewModel.isLoading
+                    isSelected: isShuffleActive
                 )
             }
             .buttonStyle(EmojiButtonStyle())
-            .disabled(viewModel.isLoading || viewModel.filteredPlaces.isEmpty)
+            .disabled(viewModel.filteredPlaces.isEmpty)
             .scaleEffect(isShuffleActive ? 1.2 : 1.0)
             .rotationEffect(isShuffleActive ? .degrees(180) : .degrees(0))
             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isShuffleActive)
         }
         .padding(.horizontal, 12)
-        .opacity(viewModel.isLoading ? 0.8 : 1.0)
-        .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
     }
 }
 

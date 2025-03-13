@@ -4,7 +4,6 @@ import SwiftUI
 struct EmojiButton: View {
     let emoji: String
     let isSelected: Bool
-    var isLoading: Bool = false
     
     // Add animation state
     @State private var animateSelection = false
@@ -23,9 +22,7 @@ struct EmojiButton: View {
             // Main background
             Circle()
                 .fill(
-                    isSelected ? Color.blue
-                        .opacity(isLoading ? 0.1 : 0.15) : Color.gray
-                        .opacity(0.08)
+                    isSelected ? Color.blue.opacity(0.15) : Color.gray.opacity(0.08)
                 )
                 .shadow(color: .black.opacity(isSelected ? 0.15 : 0.05),
                         radius: isSelected ? 4 : 2,
@@ -35,31 +32,19 @@ struct EmojiButton: View {
             // Emoji text
             Text(emoji)
                 .font(.system(size: 24))
-                .opacity(isLoading ? 0.8 : 1.0)
-                .scaleEffect(isSelected && !isLoading ? 1.1 : 1.0)
+                .scaleEffect(isSelected ? 1.1 : 1.0)
             
             // Border
             Circle()
                 .stroke(
-                    isSelected ? Color.blue
-                        .opacity(isLoading ? 0.5 : 1.0) : Color.gray
-                        .opacity(0.3),
+                    isSelected ? Color.blue : Color.gray.opacity(0.3),
                     lineWidth: isSelected ? 2 : 1.5
                 )
-            
-            // Loading indicator
-            if isLoading && isSelected {
-                // Show subtle loading indicator on selected buttons
-                ProgressView()
-                    .scaleEffect(0.5)
-                    .tint(Color.blue.opacity(0.7))
-            }
         }
         .frame(width: 42, height: 42)
         // Remove scale effect during loading to prevent layout shifts
-        .scaleEffect(isSelected && !isLoading ? 1.05 : 1.0)
+        .scaleEffect(isSelected ? 1.05 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
-        .animation(.easeInOut(duration: 0.2), value: isLoading)
         .onChange(of: isSelected) { oldValue, newValue in
             if newValue {
                 // Trigger selection animation
@@ -81,7 +66,6 @@ struct EmojiButton: View {
 // MARK: FavoritesButton
 struct FavoritesButton: View {
     let isSelected: Bool
-    var isLoading: Bool = false
     
     // Add animation state
     @State private var animateStar = false
@@ -111,31 +95,19 @@ struct FavoritesButton: View {
             Image(systemName: "star.fill")
                 .font(.system(size: 18))
                 .foregroundColor(.white)
-                .opacity(isLoading ? 0.6 : 1.0)
                 .scaleEffect(animateStar ? 1.2 : 1.0)
                 .rotationEffect(animateStar ? .degrees(20) : .degrees(0))
             
             // Border
             Circle()
                 .stroke(
-                    isSelected ? Color.yellow
-                        .opacity(isLoading ? 0.5 : 1.0) : Color.black
-                    ,
+                    isSelected ? Color.yellow : Color.black,
                     lineWidth: isSelected ? 2 : 1.5
                 )
-            
-            // Loading indicator
-            if isLoading && isSelected {
-                // Show subtle loading indicator on selected button
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .tint(Color.white)
-            }
         }
         .frame(width: 42, height: 42)
-        .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
+        .scaleEffect(isSelected ? 1.05 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
-        .animation(.easeInOut(duration: 0.2), value: isLoading)
         .onChange(of: isSelected) { oldValue, newValue in
             if newValue {
                 // Trigger star animation
@@ -157,7 +129,6 @@ struct FavoritesButton: View {
 // MARK: AllCategoriesButton
 struct AllCategoriesButton: View {
     let isSelected: Bool
-    var isLoading: Bool = false
     
     // Add animation state
     @State private var animateRipple = false
@@ -187,30 +158,18 @@ struct AllCategoriesButton: View {
             Text("All")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(isSelected ? .white : .primary)
-                .opacity(isLoading ? 0.6 : 1.0)
                 .scaleEffect(animateRipple ? 1.1 : 1.0)
             
             // Border
             Circle()
                 .stroke(
-                    isSelected ? Color.blue
-                        .opacity(isLoading ? 0.5 : 1.0) : Color.gray
-                        .opacity(0.3),
+                    isSelected ? Color.blue : Color.gray.opacity(0.3),
                     lineWidth: isSelected ? 2 : 1.5
                 )
-            
-            // Loading indicator
-            if isLoading && isSelected {
-                // Show subtle loading indicator on selected button
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .tint(Color.white)
-            }
         }
         .frame(width: 42, height: 42)
-        .scaleEffect(isSelected ? (isLoading ? 1.0 : 1.05) : 1.0)
+        .scaleEffect(isSelected ? 1.05 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
-        .animation(.easeInOut(duration: 0.2), value: isLoading)
         .onChange(of: isSelected) { oldValue, newValue in
             if newValue {
                 // Trigger ripple animation
@@ -248,9 +207,8 @@ struct EmojiButtonPreview: PreviewProvider {
             }
             
             HStack(spacing: 12) {
-                ShuffleButton(isSelected: false, isLoading: false)
-                ShuffleButton(isSelected: true, isLoading: false)
-                ShuffleButton(isSelected: false, isLoading: true)
+                ShuffleButton(isSelected: false)
+                ShuffleButton(isSelected: true)
             }
         }
         .padding()

@@ -7,7 +7,14 @@
 
 import Foundation
 
-/// Simple mapping between emojis and their corresponding API keys
+/// Category mapping for places
+///
+/// This map defines categories for places with associated emojis and keys.
+/// Used for categorizing and displaying places on the map and in search results.
+///
+/// Each category has:
+/// @property {Int} key - Unique identifier for the category
+/// @property {String} emoji - Emoji representation of the category
 struct CategoryMappings {
     // Mapping from emoji to key
     static let emojiToKey: [String: Int] = [

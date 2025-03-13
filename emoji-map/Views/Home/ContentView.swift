@@ -36,13 +36,13 @@ struct ContentView: View {
                                 isFavorite: viewModel
                                     .isFavorite(placeId: place.placeId),
                                 rating: viewModel.getRating(for: place.placeId),
-                                isLoading: viewModel.isLoading,
                                 onTap: {
                                     viewModel.selectedPlace = place
                                 }
                             )
-                            // Use a unique ID that changes when new places are loaded to force view recreation and animation
-                            .id("\(place.placeId)_\(viewModel.newPlacesLoaded ? "new" : "existing")")
+                            // Use a stable ID that doesn't change when panning the map
+                            // This prevents existing annotations from flashing
+                            .id(place.placeId)
                         },
                         label: {
                             // Empty label since we're using custom annotation view
@@ -76,17 +76,6 @@ struct ContentView: View {
                 }
             }
             .edgesIgnoringSafeArea(.all)
-            .overlay(
-                // Map overlay for loading - more subtle approach
-                viewModel.isLoading ?
-                ZStack {
-                    // Semi-transparent overlay that doesn't completely hide the map
-                    Rectangle()
-                        .fill(Color.white.opacity(0.05))
-                        .edgesIgnoringSafeArea(.all)
-                }
-                : nil
-            )
             
             if !viewModel.isLocationAvailable && !viewModel.isLocationPermissionDenied {
                 // Progress view when location isn't available but not denied - use minimal style
@@ -167,8 +156,7 @@ struct ContentView: View {
                     viewModel.showFilters = true
                 }) {
                     FiltersButton(
-                        activeFilterCount: viewModel.activeFilterCount,
-                        isLoading: viewModel.isLoading
+                        activeFilterCount: viewModel.activeFilterCount
                     )
                 }
                 .buttonStyle(PlainButtonStyle())

@@ -16,7 +16,6 @@ import Combine
 class PlaceDetailViewModel: ObservableObject {
     @Published var photos: [String] = []
     @Published var reviews: [(String, String, Int)] = []
-    @Published var isLoading = false
     @Published var error: NetworkError?
     @Published var showError = false
     @Published var distanceFromUser: Double? = nil
@@ -122,7 +121,7 @@ class PlaceDetailViewModel: ObservableObject {
             // Wait a short delay before showing loading indicator
             try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
             if !Task.isCancelled {
-                isLoading = true
+                // isLoading = true
             }
         }
         
@@ -137,7 +136,7 @@ class PlaceDetailViewModel: ObservableObject {
             
             // Cancel the loading indicator task if it hasn't shown yet
             loadingTask.cancel()
-            isLoading = false
+            // isLoading = false
             
             // Update UI with cached data
             self.photos = cachedDetails.photos
@@ -153,34 +152,43 @@ class PlaceDetailViewModel: ObservableObject {
             service.cancelPlaceDetailsRequests()
         }
         
-        service.fetchPlaceDetails(placeId: place.placeId) { [weak self] result in
-            // Ensure UI updates happen on the main thread
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
+        // Use Task to call the async API
+        Task {
+            do {
+                let details = try await service.fetchPlaceDetails(placeId: place.placeId)
                 
-                // Cancel the loading indicator task if it hasn't shown yet
-                loadingTask.cancel()
-                self.isLoading = false
-                
-                switch result {
-                case .success(let details):
+                // Update UI on the main thread
+                await MainActor.run {
+                    // Cancel the loading indicator task if it hasn't shown yet
+                    loadingTask.cancel()
+                    // isLoading = false
+                    
                     self.logger.info("Successfully fetched details for place ID: \(place.placeId)")
                     self.photos = details.photos
                     self.reviews = details.reviews
-                case .failure(let networkError):
-                    self.error = networkError
+                }
+            } catch {
+                // Handle errors on the main thread
+                await MainActor.run {
+                    // Cancel the loading indicator task if it hasn't shown yet
+                    loadingTask.cancel()
+                    // isLoading = false
                     
-                    // Handle specific error types
-                    if case .noResults = networkError {
-                        // Provide haptic feedback for no results
-                        let feedbackGenerator = UINotificationFeedbackGenerator()
-                        feedbackGenerator.prepare()
-                        feedbackGenerator.notificationOccurred(.warning)
+                    if let networkError = error as? NetworkError {
+                        self.error = networkError
+                        
+                        // Handle specific error types
+                        if case .noResults = networkError {
+                            // Provide haptic feedback for no results
+                            let feedbackGenerator = UINotificationFeedbackGenerator()
+                            feedbackGenerator.prepare()
+                            feedbackGenerator.notificationOccurred(.warning)
+                        }
+                        
+                        // Only show error alert if it's not a cancelled request
+                        self.showError = networkError.shouldShowAlert
+                        self.logger.error("Error fetching place details: \(networkError.localizedDescription)")
                     }
-                    
-                    // Only show error alert if it's not a cancelled request
-                    self.showError = networkError.shouldShowAlert
-                    self.logger.error("Error fetching place details: \(networkError.localizedDescription)")
                 }
             }
         }

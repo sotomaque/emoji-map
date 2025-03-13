@@ -292,20 +292,17 @@ class NetworkCache {
     /// Generate a cache key for places search based on parameters
     /// - Parameters:
     ///   - center: The center coordinate
-    ///   - categories: The categories to search for
+    ///   - categories: The emojis to search for
     ///   - showOpenNowOnly: Whether to show only open places
     /// - Returns: A unique cache key
-    func generatePlacesCacheKey(center: CLLocationCoordinate2D, categories: [(emoji: String, name: String, type: String)], showOpenNowOnly: Bool) -> String {
+    func generatePlacesCacheKey(center: CLLocationCoordinate2D, categories: [String]?, showOpenNowOnly: Bool) -> String {
         // Round coordinates to reduce cache fragmentation (within ~100m)
         let roundedLat = round(center.latitude * 100) / 100
         let roundedLng = round(center.longitude * 100) / 100
         
-        // Extract unique category types using a Set to eliminate duplicates
-        let uniqueTypes = Set(categories.map { $0.type })
-        
-        // Sort the unique types to ensure consistent keys
-        let sortedTypes = uniqueTypes.sorted()
-        let categoriesString = sortedTypes.joined(separator: ",")
+        // Sort the categories to ensure consistent keys
+        let sortedCategories = (categories ?? []).sorted()
+        let categoriesString = sortedCategories.joined(separator: ",")
         
         // Log the generated key for debugging
         logger.debug("Generated cache key: places_\(roundedLat)_\(roundedLng)_\(categoriesString)_\(showOpenNowOnly)")
