@@ -84,18 +84,28 @@ class HomeViewModel: ObservableObject {
             
             // Check if we need to fetch new data based on region change
             if shouldFetchForRegion(region) {
-                if let userLocation = locationManager.lastLocation?.coordinate {
-                    await MainActor.run {
-                        fetchNearbyPlaces(at: userLocation)
-                    }
+                await MainActor.run {
+                    // Use the center of the current viewport instead of user location
+                    fetchNearbyPlaces(at: region.center)
                 }
             }
         }
     }
     
     /// Refresh places based on current location
-    func refreshPlaces() {
-        if let location = locationManager.lastLocation?.coordinate {
+    /// - Parameter clearExisting: Whether to clear existing places before refreshing (default: false)
+    func refreshPlaces(clearExisting: Bool = false) {
+        // Clear existing places if requested
+        if clearExisting {
+            places.removeAll()
+            logger.notice("Cleared existing places for full refresh")
+        }
+        
+        if let region = visibleRegion {
+            // Use the current viewport center if available
+            fetchNearbyPlaces(at: region.center, useCache: false)
+        } else if let location = locationManager.lastLocation?.coordinate {
+            // Fall back to user location if no viewport is available
             fetchNearbyPlaces(at: location, useCache: false)
         } else {
             errorMessage = "Unable to determine your location"
@@ -158,7 +168,7 @@ class HomeViewModel: ObservableObject {
         
         logger.notice("Fetching nearby places at \(coordinate.latitude), \(coordinate.longitude)")
         
-        placesService.fetchNearbyPlaces(location: coordinate, region: visibleRegion, useCache: useCache)
+        placesService.fetchNearbyPlaces(location: coordinate, useCache: useCache)
             .sink(receiveCompletion: { [weak self] completion in
                 guard let self = self else { return }
                 
@@ -170,9 +180,40 @@ class HomeViewModel: ObservableObject {
             }, receiveValue: { [weak self] fetchedPlaces in
                 guard let self = self else { return }
                 
-                self.places = fetchedPlaces
-                self.logger.notice("Fetched \(fetchedPlaces.count) places")
+                // Merge new places with existing places instead of replacing
+                self.mergePlaces(fetchedPlaces)
+                self.logger.notice("Fetched \(fetchedPlaces.count) places, total places now: \(self.places.count)")
             })
             .store(in: &cancellables)
+    }
+    
+    /// Merge new places with existing places, avoiding duplicates
+    private func mergePlaces(_ newPlaces: [Place]) {
+        // Create a dictionary of existing places by ID for efficient lookup
+        let existingPlacesById = Dictionary(uniqueKeysWithValues: places.map { ($0.id, $0) })
+        
+        // Count before adding
+        let countBefore = places.count
+        
+        // Add only places that don't already exist
+        for place in newPlaces {
+            if existingPlacesById[place.id] == nil {
+                places.append(place)
+            }
+        }
+        
+        // Log how many new places were added
+        let addedCount = places.count - countBefore
+        if addedCount > 0 {
+            logger.notice("Added \(addedCount) new unique places, total now: \(self.places.count)")
+        } else {
+            logger.notice("No new unique places to add, total remains: \(self.places.count)")
+        }
+    }
+    
+    /// Clear all places (useful for reset functionality if needed)
+    func clearPlaces() {
+        places.removeAll()
+        logger.notice("Cleared all places")
     }
 } 

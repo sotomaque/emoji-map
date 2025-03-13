@@ -53,17 +53,15 @@ class PlacesService {
     
     /// Fetches nearby places from the backend
     /// - Parameters:
-    ///   - location: The user's current location
-    ///   - region: The visible map region (optional)
+    ///   - location: The center of the current viewport
     ///   - useCache: Whether to use cached data if available (default: true)
     /// - Returns: A publisher that emits an array of places or an error
     func fetchNearbyPlaces(
         location: CLLocationCoordinate2D,
-        region: MKCoordinateRegion? = nil,
         useCache: Bool = true
     ) -> AnyPublisher<[Place], Error> {
-        // Create a cache key based on location and region
-        let cacheKey = createCacheKey(location: location, region: region)
+        // Create a cache key based on location
+        let cacheKey = createCacheKey(location: location)
         
         // Check if we have cached data and it's still valid
         if useCache, 
@@ -76,7 +74,7 @@ class PlacesService {
         }
         
         // Otherwise fetch from the network
-        return fetchPlacesFromNetwork(location: location, region: region)
+        return fetchPlacesFromNetwork(location: location)
             .handleEvents(receiveOutput: { [weak self] places in
                 // Cache the results
                 self?.placesCache[cacheKey] = (places: places, timestamp: Date())
@@ -97,32 +95,21 @@ class PlacesService {
     
     // MARK: - Private Methods
     
-    /// Creates a cache key based on location and region
-    private func createCacheKey(location: CLLocationCoordinate2D, region: MKCoordinateRegion?) -> String {
-        if let region = region {
-            // Round to 3 decimal places for the cache key to avoid too many unique keys
-            let lat = round(location.latitude * 1000) / 1000
-            let lng = round(location.longitude * 1000) / 1000
-            let latDelta = round(region.span.latitudeDelta * 1000) / 1000
-            let lngDelta = round(region.span.longitudeDelta * 1000) / 1000
-            return "\(lat),\(lng):\(latDelta),\(lngDelta)"
-        } else {
-            // Just use the location if no region is provided
-            let lat = round(location.latitude * 1000) / 1000
-            let lng = round(location.longitude * 1000) / 1000
-            return "\(lat),\(lng)"
-        }
+    /// Creates a cache key based on location
+    private func createCacheKey(location: CLLocationCoordinate2D) -> String {
+        let lat = round(location.latitude * 1000) / 1000
+        let lng = round(location.longitude * 1000) / 1000
+        return "\(lat),\(lng)"
     }
     
     /// Fetches places from the network
     private func fetchPlacesFromNetwork(
-        location: CLLocationCoordinate2D,
-        region: MKCoordinateRegion? = nil
+        location: CLLocationCoordinate2D
     ) -> AnyPublisher<[Place], Error> {
         // Start building the URL with the API endpoint
         var urlComponents = URLComponents(url: Configuration.backendURL.appendingPathComponent("api/places/nearby"), resolvingAgainstBaseURL: true)
         
-        // Always use the center point coordinates for the location parameter
+        // Always use the provided location parameter (which should be the viewport center)
         let locationValue = "\(location.latitude),\(location.longitude)"
         logger.notice("Using location parameter: \(locationValue)")
         

@@ -45,6 +45,36 @@ struct Home: View {
             
             // Bottom buttons container
             VStack {
+                // Place counter at the top
+                HStack {
+                    Text("\(viewModel.places.count) places")
+                        .font(.caption)
+                        .padding(8)
+                        .background(Color.white.opacity(0.8))
+                        .cornerRadius(8)
+                        .shadow(radius: 2)
+                        .padding(.leading, 20)
+                    
+                    Spacer()
+                    
+                    // Clear all button
+                    Button(action: {
+                        viewModel.clearPlaces()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash")
+                            Text("Clear")
+                        }
+                        .font(.caption)
+                        .padding(8)
+                        .background(Color.white.opacity(0.8))
+                        .cornerRadius(8)
+                        .shadow(radius: 2)
+                    }
+                    .padding(.trailing, 20)
+                }
+                .padding(.top, 20)
+                
                 Spacer()
                 HStack {
                     // Filter button
@@ -64,7 +94,8 @@ struct Home: View {
                     
                     // Refresh button
                     Button(action: {
-                        viewModel.refreshPlaces()
+                        // Pass false to add to existing places
+                        viewModel.refreshPlaces(clearExisting: false)
                     }) {
                         Image(systemName: "arrow.clockwise")
                             .font(.title2)

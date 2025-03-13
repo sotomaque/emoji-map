@@ -19,13 +19,13 @@ struct PlacesResponse: Codable {
 }
 
 // Place model representing a location with an emoji
-struct Place: Identifiable, Codable {
+struct Place: Identifiable, Codable, Equatable {
     var id: String
     var emoji: String
     var location: Location
     
     // Nested Location structure
-    struct Location: Codable {
+    struct Location: Codable, Equatable {
         var latitude: Double
         var longitude: Double
     }
@@ -33,6 +33,11 @@ struct Place: Identifiable, Codable {
     // Computed property to get CLLocationCoordinate2D for MapKit
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude)
+    }
+    
+    // Implement Equatable to compare places by ID
+    static func == (lhs: Place, rhs: Place) -> Bool {
+        return lhs.id == rhs.id
     }
 }
 
