@@ -6,9 +6,13 @@
 //
 
 import SwiftUI
+import os.log
 
 @main
 struct emoji_mapApp: App {
+    // Logger for debugging
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "emoji_mapApp")
+    
     // Use the shared service container - safely accessed on the main thread
     private var serviceContainer: ServiceContainer {
         MainActor.assumeIsolated {
@@ -25,6 +29,14 @@ struct emoji_mapApp: App {
     
     // Add state to track if splash screen is showing
     @State private var isShowingSplash = false
+    
+    init() {
+        // Print network interfaces if using development server
+        if Configuration.IS_DEV_SERVER {
+            logger.notice("Development server mode is enabled")
+            Configuration.printNetworkInterfaces()
+        }
+    }
     
     var body: some Scene {
         WindowGroup {
