@@ -88,11 +88,6 @@ struct SplashScreen: View {
             // Create emoji particles
             createEmojiParticles()
             
-            // Start pre-fetching places data while the splash screen is showing
-            MainActor.assumeIsolated {
-                ServiceContainer.shared.preFetchPlaces()
-            }
-            
             // Set a timer to finish the splash screen
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                 withAnimation(.easeOut(duration: 0.5)) {
