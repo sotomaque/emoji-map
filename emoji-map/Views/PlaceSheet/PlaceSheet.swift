@@ -132,6 +132,10 @@ struct PlaceDetailView: View {
                 .cornerRadius(12)
                 .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
                 
+                // User Rating section
+                UserRatingView(placeId: place.id, isLoading: viewModel.isLoadingDetails)
+                    .padding(.vertical, 12)
+                
                 // Location section
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -482,8 +486,16 @@ struct HeartButton: View {
     
     var body: some View {
         Button(action: {
+            // Provide haptic feedback
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.prepare()
+            
             // Toggle favorite status in UserPreferences
             isFavorite = userPreferences.toggleFavorite(placeId: placeId)
+            
+            // Trigger haptic feedback
+            generator.impactOccurred()
+            
             logger.notice("Heart button clicked for place ID: \(placeId), favorite: \(isFavorite)")
         }) {
             Image(systemName: isFavorite ? "heart.fill" : "heart")
@@ -497,6 +509,67 @@ struct HeartButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// User rating stars component
+struct UserRatingView: View {
+    let placeId: String
+    let isLoading: Bool
+    @State private var userRating: Int = 0
+    
+    // Logger
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "UserRatingView")
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "star.square.fill")
+                    .foregroundColor(.yellow)
+                Text("Rate this place")
+                    .font(.headline)
+            }
+            .padding(.horizontal)
+            
+            if isLoading {
+                // Shimmer effect for loading state
+                HStack(spacing: 8) {
+                    ForEach(1...5, id: \.self) { _ in
+                        ShimmerView()
+                            .frame(width: 30, height: 30)
+                            .mask(
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 30))
+                            )
+                    }
+                }
+                .padding(.horizontal)
+            } else {
+                // Interactive rating stars
+                HStack(spacing: 8) {
+                    ForEach(1...5, id: \.self) { star in
+                        Image(systemName: star <= userRating ? "star.fill" : "star")
+                            .font(.system(size: 30))
+                            .foregroundColor(.yellow)
+                            .onTapGesture {
+                                // Provide haptic feedback
+                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                generator.prepare()
+                                
+                                // Update rating
+                                userRating = star
+                                
+                                // Trigger haptic feedback
+                                generator.impactOccurred()
+                                
+                                // Log the rating
+                                logger.notice("Rating clicked: \(star) for place ID: \(placeId)")
+                            }
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
     }
 }
 
