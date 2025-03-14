@@ -76,7 +76,7 @@ struct PlaceDetailView: View {
                     Spacer()
                     
                     // Heart button
-                    HeartButton()
+                    HeartButton(placeId: place.id)
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -302,13 +302,29 @@ struct FeatureBadge: View {
 
 // Heart button for favorites
 struct HeartButton: View {
-    @State private var isFavorite = false
+    // State to track favorite status
+    @State private var isFavorite: Bool
+    
+    // Access to user preferences
+    @ObservedObject private var userPreferences = ServiceContainer.shared.userPreferences
+    
+    // Place ID
+    let placeId: String
+    
+    // Logger
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "HeartButton")
+    
+    init(placeId: String) {
+        self.placeId = placeId
+        // Initialize favorite state from UserPreferences
+        self._isFavorite = State(initialValue: ServiceContainer.shared.userPreferences.isFavorite(placeId: placeId))
+    }
     
     var body: some View {
         Button(action: {
-            isFavorite.toggle()
-            logger.notice("Heart button clicked, favorite: \(isFavorite)")
+            // Toggle favorite status in UserPreferences
+            isFavorite = userPreferences.toggleFavorite(placeId: placeId)
+            logger.notice("Heart button clicked for place ID: \(placeId), favorite: \(isFavorite)")
         }) {
             Image(systemName: isFavorite ? "heart.fill" : "heart")
                 .font(.title2)

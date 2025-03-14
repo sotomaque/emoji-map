@@ -10,6 +10,7 @@ import CoreLocation
 import MapKit
 import _MapKit_SwiftUI
 import SwiftUICore
+import SwiftUI
 
 // Place model representing a location with an emoji
 struct Place: Identifiable, Codable, Equatable {
@@ -100,11 +101,16 @@ struct Place: Identifiable, Codable, Equatable {
 extension Place {
     func mapAnnotation(onTap: @escaping (Place) -> Void) -> some MapContent {
         Annotation(coordinate: coordinate) {
-            Text(emoji)
-                .font(.system(size: 30))
-                .onTapGesture {
-                    onTap(self)
-                }
+            // Check if this place is favorited
+            let isFavorited = ServiceContainer.shared.userPreferences.isFavorite(placeId: id)
+            
+            // Use the new PlaceAnnotation view
+            PlaceAnnotation(
+                emoji: emoji,
+                isFavorite: isFavorited,
+                isLoading: false,
+                onTap: { onTap(self) }
+            )
         } label: {
            // No-op (only showing Emojis)
         }

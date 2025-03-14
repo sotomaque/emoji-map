@@ -39,6 +39,7 @@ class HomeViewModel: ObservableObject {
     
     // Services
     let placesService: PlacesServiceProtocol
+    let userPreferences: UserPreferences
     
     // Logger
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "HomeViewModel")
@@ -48,8 +49,9 @@ class HomeViewModel: ObservableObject {
     
     // MARK: - Initialization
     
-    init(placesService: PlacesServiceProtocol) {
+    init(placesService: PlacesServiceProtocol, userPreferences: UserPreferences) {
         self.placesService = placesService
+        self.userPreferences = userPreferences
         logger.notice("HomeViewModel initialized")
         
         setupLocationManager()
@@ -149,6 +151,11 @@ class HomeViewModel: ObservableObject {
     func toggleFavoritesFilter() {
         showFavoritesOnly.toggle()
         logger.notice("Toggled favorites filter: \(self.showFavoritesOnly ? "ON" : "OFF")")
+        
+        if showFavoritesOnly {
+            logger.notice("Showing only \(self.userPreferences.favoritePlaceIds.count) favorited places")
+        }
+        
         applyFilters()
     }
     
@@ -217,10 +224,11 @@ class HomeViewModel: ObservableObject {
             }
         }
         
-        // Apply favorites filter (placeholder - would need to implement favorites functionality)
+        // Apply favorites filter
         if showFavoritesOnly {
-            // This is a placeholder - you would need to implement favorites functionality
-            // filtered = filtered.filter { isFavorite($0) }
+            filtered = filtered.filter { place in
+                return userPreferences.isFavorite(placeId: place.id)
+            }
         }
         
         // Update filtered places

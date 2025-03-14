@@ -24,7 +24,7 @@ class ServiceContainer {
     
     // MARK: - View Models
     lazy var homeViewModel: HomeViewModel = {
-        return HomeViewModel(placesService: placesService)
+        return HomeViewModel(placesService: placesService, userPreferences: userPreferences)
     }()
     
     // MARK: - Initialization

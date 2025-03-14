@@ -280,7 +280,11 @@ struct CategorySelector: View {
 #Preview {
     VStack {
         // Create a mock HomeViewModel for the preview
-        CategorySelector(viewModel: HomeViewModel(placesService: MockPlacesService()))
+        let mockService = MockPlacesService()
+        let mockUserPreferences = UserPreferences(userDefaults: UserDefaults.standard)
+        let viewModel = HomeViewModel(placesService: mockService, userPreferences: mockUserPreferences)
+        
+        CategorySelector(viewModel: viewModel)
             .padding(.vertical)
         
         Spacer()

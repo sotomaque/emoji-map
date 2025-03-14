@@ -17,7 +17,7 @@ struct Configuration {
     
     /// Toggle to use local development server
     /// Set this to true to use localhost:3000 instead of production URL
-    static let IS_DEV_SERVER = false
+    static let IS_DEV_SERVER = true
     
     /// The IP address of your development machine
     /// Change this to your computer's local IP address (e.g., "192.168.1.100")

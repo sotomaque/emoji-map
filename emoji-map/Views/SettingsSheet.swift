@@ -231,7 +231,8 @@ struct SettingsSheet: View {
 #Preview {
     // Create a mock HomeViewModel for the preview
     let mockService = PreviewMockPlacesService()
-    let viewModel = HomeViewModel(placesService: mockService)
+    let mockUserPreferences = UserPreferences(userDefaults: UserDefaults.standard)
+    let viewModel = HomeViewModel(placesService: mockService, userPreferences: mockUserPreferences)
     
     // Add some mock data
     viewModel.places = [
