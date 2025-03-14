@@ -48,17 +48,28 @@ struct PlaceDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // Place details
+                // Place header
                 HStack {
                     Text(place.emoji)
                         .font(.system(size: 60))
                     
                     VStack(alignment: .leading) {
-                        Text("ID: \(place.id)")
-                            .font(.headline)
+                        if let displayName = viewModel.place.displayName {
+                            Text(displayName)
+                                .font(.headline)
+                        } else {
+                            Text("ID: \(place.id)")
+                                .font(.headline)
+                        }
+                        
+                        if let primaryType = viewModel.place.primaryTypeDisplayName {
+                            Text(primaryType)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
                         
                         Text("Location: \(String(format: "%.6f", place.location.latitude)), \(String(format: "%.6f", place.location.longitude))")
-                            .font(.subheadline)
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
@@ -66,6 +77,118 @@ struct PlaceDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(.systemGray6))
                 .cornerRadius(12)
+                
+                // Rating and details section
+                if let rating = viewModel.place.rating {
+                    HStack(spacing: 12) {
+                        // Rating stars
+                        HStack(spacing: 2) {
+                            ForEach(1...5, id: \.self) { star in
+                                Image(systemName: star <= Int(rating) ? "star.fill" : "star")
+                                    .foregroundColor(.yellow)
+                            }
+                        }
+                        
+                        Text(String(format: "%.1f", rating))
+                            .fontWeight(.bold)
+                        
+                        if let userRatingCount = viewModel.place.userRatingCount {
+                            Text("(\(userRatingCount) reviews)")
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        // Price level
+                        if let priceLevel = viewModel.place.priceLevel, !priceLevel.isEmpty {
+                            Text(priceLevel)
+                                .fontWeight(.semibold)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                
+                // Features section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Features")
+                        .font(.headline)
+                        .padding(.horizontal)
+                    
+                    // Grid of feature badges
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 8) {
+                        if viewModel.place.openNow == true {
+                            FeatureBadge(text: "Open Now", systemImage: "clock.fill", color: .green)
+                        }
+                        
+                        if viewModel.place.takeout == true {
+                            FeatureBadge(text: "Takeout", systemImage: "bag.fill", color: .blue)
+                        }
+                        
+                        if viewModel.place.delivery == true {
+                            FeatureBadge(text: "Delivery", systemImage: "bicycle", color: .orange)
+                        }
+                        
+                        if viewModel.place.dineIn == true {
+                            FeatureBadge(text: "Dine-in", systemImage: "fork.knife", color: .purple)
+                        }
+                        
+                        if viewModel.place.outdoorSeating == true {
+                            FeatureBadge(text: "Outdoor Seating", systemImage: "sun.max.fill", color: .yellow)
+                        }
+                        
+                        if viewModel.place.servesCoffee == true {
+                            FeatureBadge(text: "Coffee", systemImage: "cup.and.saucer.fill", color: .brown)
+                        }
+                        
+                        if viewModel.place.servesDessert == true {
+                            FeatureBadge(text: "Dessert", systemImage: "birthday.cake.fill", color: .pink)
+                        }
+                        
+                        if viewModel.place.goodForGroups == true {
+                            FeatureBadge(text: "Good for Groups", systemImage: "person.3.fill", color: .indigo)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.top, 8)
+                
+                // Reviews section
+                if let reviews = viewModel.place.reviews, !reviews.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Reviews")
+                            .font(.headline)
+                            .padding(.horizontal)
+                        
+                        ForEach(reviews.prefix(3)) { review in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    // Rating stars
+                                    HStack(spacing: 2) {
+                                        ForEach(1...5, id: \.self) { star in
+                                            Image(systemName: star <= review.rating ? "star.fill" : "star")
+                                                .font(.caption)
+                                                .foregroundColor(.yellow)
+                                        }
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Text(review.relativePublishTimeDescription)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                Text(review.text.text)
+                                    .font(.subheadline)
+                                    .lineLimit(3)
+                            }
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                            .padding(.horizontal)
+                        }
+                    }
+                }
                 
                 // Photos section
                 if !viewModel.place.photos.isEmpty {
@@ -149,6 +272,26 @@ struct PlaceDetailView: View {
             logger.notice("PlaceDetailView appeared for place ID: \(place.id)")
             viewModel.fetchPlaceData()
         }
+    }
+}
+
+// Helper view for feature badges
+struct FeatureBadge: View {
+    let text: String
+    let systemImage: String
+    let color: Color
+    
+    var body: some View {
+        HStack {
+            Image(systemName: systemImage)
+                .foregroundColor(color)
+            Text(text)
+                .font(.caption)
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background(color.opacity(0.1))
+        .cornerRadius(4)
     }
 }
 

@@ -82,6 +82,7 @@ class PlaceSheetViewModel: ObservableObject {
                 
                 return data
             }
+            .decode(type: PlaceDetailsResponse.self, decoder: JSONDecoder())
             .sink(
                 receiveCompletion: { [weak self] completion in
                     guard let self = self else { return }
@@ -93,14 +94,30 @@ class PlaceSheetViewModel: ObservableObject {
                         self.logger.error("Error fetching place details: \(error.localizedDescription)")
                     }
                 },
-                receiveValue: { [weak self] data in
+                receiveValue: { [weak self] response in
                     guard let self = self else { return }
                     
-                    // For now, just log the response
-                    if let jsonString = String(data: data, encoding: .utf8) {
-                        self.logger.notice("Details response: \(jsonString)")
-                    } else {
-                        self.logger.error("Could not convert details response to string")
+                    // Log the response
+                    self.logger.notice("Received details for place ID: \(self.place.id)")
+                    
+                    // Update the place model with the details
+                    self.place.updateWithDetails(response.data)
+                    
+                    // Log some key details
+                    if let displayName = response.data.displayName {
+                        self.logger.notice("Place name: \(displayName)")
+                    }
+                    
+                    if let rating = response.data.rating {
+                        self.logger.notice("Place rating: \(rating)")
+                    }
+                    
+                    if let reviewCount = response.data.reviews?.count {
+                        self.logger.notice("Number of reviews: \(reviewCount)")
+                    }
+                    
+                    if let primaryType = response.data.primaryTypeDisplayName {
+                        self.logger.notice("Place type: \(primaryType)")
                     }
                 }
             )
