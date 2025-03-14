@@ -25,12 +25,13 @@ class HomeViewModel: ObservableObject {
     @Published var visibleRegion: MKCoordinateRegion?
     private var lastFetchedRegion: MKCoordinateRegion?
     private var regionChangeDebounceTask: Task<Void, Never>?
+    private var fetchTask: Task<Void, Never>?
     
     // Location manager
     let locationManager = LocationManager()
     
     // Services
-    private let placesService: PlacesService
+    private let placesService: PlacesServiceProtocol
     
     // Logger
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "HomeViewModel")
@@ -40,7 +41,7 @@ class HomeViewModel: ObservableObject {
     
     // MARK: - Initialization
     
-    init(placesService: PlacesService) {
+    init(placesService: PlacesServiceProtocol) {
         self.placesService = placesService
         logger.notice("HomeViewModel initialized")
         
@@ -48,8 +49,9 @@ class HomeViewModel: ObservableObject {
     }
     
     deinit {
-        // Cancel any pending region change tasks
+        // Cancel any pending tasks
         regionChangeDebounceTask?.cancel()
+        fetchTask?.cancel()
     }
     
     // MARK: - Public Methods
@@ -84,10 +86,8 @@ class HomeViewModel: ObservableObject {
             
             // Check if we need to fetch new data based on region change
             if shouldFetchForRegion(region) {
-                await MainActor.run {
-                    // Use the center of the current viewport instead of user location
-                    fetchNearbyPlaces(at: region.center)
-                }
+                // Use the center of the current viewport instead of user location
+                fetchNearbyPlaces(at: region.center)
             }
         }
     }
@@ -158,8 +158,11 @@ class HomeViewModel: ObservableObject {
         return significantMove || significantZoom
     }
     
-    /// Fetch nearby places from the service
+    /// Fetch nearby places from the service using async/await
     private func fetchNearbyPlaces(at coordinate: CLLocationCoordinate2D, useCache: Bool = true) {
+        // Cancel any existing fetch task
+        fetchTask?.cancel()
+        
         // Only show loading indicator if we have no places to display
         let shouldShowLoading = places.isEmpty
         if shouldShowLoading {
@@ -173,7 +176,56 @@ class HomeViewModel: ObservableObject {
         
         logger.notice("Fetching nearby places at \(coordinate.latitude), \(coordinate.longitude)")
         
-        placesService.fetchNearbyPlaces(location: coordinate, useCache: useCache)
+        // Create a new fetch task
+        fetchTask = Task {
+            do {
+                let fetchedPlaces = try await placesService.fetchNearbyPlaces(
+                    location: coordinate,
+                    useCache: useCache
+                )
+                
+                // Check if the task was cancelled
+                if Task.isCancelled { return }
+                
+                // Merge new places with existing places instead of replacing
+                mergePlaces(fetchedPlaces)
+                logger.notice("Fetched \(fetchedPlaces.count) places, total places now: \(self.places.count)")
+                
+                // Hide loading indicator if it was showing
+                if shouldShowLoading {
+                    isLoading = false
+                }
+            } catch {
+                // Check if the task was cancelled
+                if Task.isCancelled { return }
+                
+                // Only hide loading if we were showing it
+                if shouldShowLoading {
+                    isLoading = false
+                }
+                
+                errorMessage = "Failed to load places: \(error.localizedDescription)"
+                logger.error("Error fetching places: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    /// Fetch nearby places from the service using Combine (legacy method)
+    private func fetchNearbyPlacesWithCombine(at coordinate: CLLocationCoordinate2D, useCache: Bool = true) {
+        // Only show loading indicator if we have no places to display
+        let shouldShowLoading = places.isEmpty
+        if shouldShowLoading {
+            isLoading = true
+        }
+        
+        errorMessage = nil
+        
+        // Store the current region as the last fetched region
+        lastFetchedRegion = visibleRegion
+        
+        logger.notice("Fetching nearby places at \(coordinate.latitude), \(coordinate.longitude)")
+        
+        placesService.fetchNearbyPlacesPublisher(location: coordinate, useCache: useCache)
             .sink(receiveCompletion: { [weak self] completion in
                 guard let self = self else { return }
                 

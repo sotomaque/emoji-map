@@ -11,13 +11,6 @@ import MapKit
 import _MapKit_SwiftUI
 import SwiftUICore
 
-// Main response structure from the API
-struct PlacesResponse: Codable {
-    let data: [Place]
-    let count: Int
-    let cacheHit: Bool
-}
-
 // Place model representing a location with an emoji
 struct Place: Identifiable, Codable, Equatable {
     // Required fields from the initial API response

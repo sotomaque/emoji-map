@@ -11,7 +11,9 @@ import Combine
 import os.log
 import MapKit
 
-// Custom error types for PlacesService
+// MARK: - Errors
+
+/// Custom error types for PlacesService
 enum PlacesServiceError: Error, LocalizedError {
     case invalidURL
     case networkError(Error)
@@ -35,28 +37,87 @@ enum PlacesServiceError: Error, LocalizedError {
     }
 }
 
+// MARK: - Places Service Protocol
+
+/// Protocol defining the places service capabilities
+protocol PlacesServiceProtocol {
+    @MainActor func fetchNearbyPlaces(location: CLLocationCoordinate2D, useCache: Bool) async throws -> [Place]
+    @MainActor func fetchNearbyPlacesPublisher(location: CLLocationCoordinate2D, useCache: Bool) -> AnyPublisher<[Place], Error>
+    @MainActor func clearCache()
+}
+
+// MARK: - Places Service Implementation
+
 @MainActor
-class PlacesService {
+class PlacesService: PlacesServiceProtocol {
     // Logger for debugging
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "PlacesService")
+    
+    // Dependencies
+    private let networkService: NetworkServiceProtocol
     
     // Cache for places data
     private var placesCache: [String: (places: [Place], timestamp: Date)] = [:]
     private let cacheExpirationTime: TimeInterval = Configuration.cacheExpirationTime
     
     // MARK: - Initialization
-    init() {
+    
+    init(networkService: NetworkServiceProtocol = NetworkService()) {
+        self.networkService = networkService
         logger.notice("PlacesService initialized")
     }
     
     // MARK: - Public Methods
     
-    /// Fetches nearby places from the backend
+    /// Fetches nearby places from the backend using async/await
+    /// - Parameters:
+    ///   - location: The center of the current viewport
+    ///   - useCache: Whether to use cached data if available (default: true)
+    /// - Returns: An array of places
+    @MainActor
+    func fetchNearbyPlaces(
+        location: CLLocationCoordinate2D,
+        useCache: Bool = true
+    ) async throws -> [Place] {
+        // Create a cache key based on location
+        let cacheKey = createCacheKey(location: location)
+        
+        // Check if we have cached data and it's still valid
+        if useCache, 
+           let cachedData = placesCache[cacheKey],
+           Date().timeIntervalSince(cachedData.timestamp) < cacheExpirationTime {
+            logger.notice("Using cached places data for location: \(location.latitude), \(location.longitude)")
+            return cachedData.places
+        }
+        
+        // Otherwise fetch from the network
+        do {
+            let queryItems = [URLQueryItem(name: "location", value: "\(location.latitude),\(location.longitude)")]
+            
+            logger.notice("Fetching nearby places for location: \(location.latitude), \(location.longitude)")
+            
+            let response: PlacesResponse = try await networkService.fetch(
+                endpoint: .nearbyPlaces,
+                queryItems: queryItems
+            )
+            
+            // Cache the results
+            placesCache[cacheKey] = (places: response.data, timestamp: Date())
+            logger.notice("Cached \(response.data.count) places for location: \(location.latitude), \(location.longitude)")
+            
+            return response.data
+        } catch {
+            logger.error("Error fetching places: \(error.localizedDescription)")
+            throw mapToPlacesServiceError(error)
+        }
+    }
+    
+    /// Fetches nearby places from the backend using Combine
     /// - Parameters:
     ///   - location: The center of the current viewport
     ///   - useCache: Whether to use cached data if available (default: true)
     /// - Returns: A publisher that emits an array of places or an error
-    func fetchNearbyPlaces(
+    @MainActor func fetchNearbyPlacesPublisher(
         location: CLLocationCoordinate2D,
         useCache: Bool = true
     ) -> AnyPublisher<[Place], Error> {
@@ -74,8 +135,14 @@ class PlacesService {
         }
         
         // Otherwise fetch from the network
-        return fetchPlacesFromNetwork(location: location)
-            .subscribe(on: DispatchQueue.global(qos: .userInitiated)) // Perform network operations on background thread
+        let queryItems = [URLQueryItem(name: "location", value: "\(location.latitude),\(location.longitude)")]
+        
+        logger.notice("Fetching nearby places for location: \(location.latitude), \(location.longitude)")
+        
+        return networkService.fetchWithPublisher(endpoint: .nearbyPlaces, queryItems: queryItems)
+            .map { (response: PlacesResponse) -> [Place] in
+                return response.data
+            }
             .handleEvents(receiveOutput: { [weak self] places in
                 // Cache the results
                 self?.placesCache[cacheKey] = (places: places, timestamp: Date())
@@ -85,12 +152,15 @@ class PlacesService {
                     self?.logger.error("Error fetching places: \(error.localizedDescription)")
                 }
             })
-            .receive(on: DispatchQueue.main) // Switch back to main thread for UI updates
+            .mapError { [weak self] error -> Error in
+                guard let self = self else { return PlacesServiceError.unknownError }
+                return self.mapToPlacesServiceError(error)
+            }
             .eraseToAnyPublisher()
     }
     
     /// Clears the places cache
-    func clearCache() {
+    @MainActor func clearCache() {
         placesCache.removeAll()
         logger.notice("Places cache cleared")
     }
@@ -104,77 +174,21 @@ class PlacesService {
         return "\(lat),\(lng)"
     }
     
-    /// Fetches places from the network
-    private func fetchPlacesFromNetwork(
-        location: CLLocationCoordinate2D
-    ) -> AnyPublisher<[Place], Error> {
-        // Start building the URL with the API endpoint
-        var urlComponents = URLComponents(url: Configuration.backendURL.appendingPathComponent("api/places/nearby"), resolvingAgainstBaseURL: true)
-        
-        // Always use the provided location parameter (which should be the viewport center)
-        let locationValue = "\(location.latitude),\(location.longitude)"
-        logger.notice("Using location parameter: \(locationValue)")
-        
-        // Set the query items with just the location parameter
-        urlComponents?.queryItems = [URLQueryItem(name: "location", value: locationValue)]
-        
-        guard let url = urlComponents?.url else {
-            logger.error("Failed to create URL for nearby places request")
-            return Fail(error: PlacesServiceError.invalidURL).eraseToAnyPublisher()
+    /// Maps network errors to PlacesServiceError
+    private func mapToPlacesServiceError(_ error: Error) -> Error {
+        if let networkError = error as? NetworkError {
+            switch networkError {
+            case .invalidURL:
+                return PlacesServiceError.invalidURL
+            case .serverError(let statusCode, _):
+                return PlacesServiceError.serverError(statusCode)
+            case .decodingError(let decodingError):
+                return PlacesServiceError.decodingError(decodingError)
+            default:
+                return PlacesServiceError.networkError(networkError)
+            }
         }
         
-        logger.notice("Fetching nearby places from: \(url.absoluteString)")
-        
-        // Create and configure the request
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.addValue("application/json", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 15 // 15 second timeout
-        
-        // Return a publisher that will emit the decoded places or an error
-        return URLSession.shared.dataTaskPublisher(for: request)
-            .tryMap { data, response -> Data in
-                // Check for HTTP errors
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    self.logger.error("Response is not an HTTP response")
-                    throw PlacesServiceError.unknownError
-                }
-                
-                self.logger.notice("Received response with status code: \(httpResponse.statusCode)")
-                
-                // Check for successful status code (200-299)
-                guard (200...299).contains(httpResponse.statusCode) else {
-                    self.logger.error("Server returned error status code: \(httpResponse.statusCode)")
-                    throw PlacesServiceError.serverError(httpResponse.statusCode)
-                }
-                
-                return data
-            }
-            .mapError { error -> Error in
-                if let placesError = error as? PlacesServiceError {
-                    return placesError
-                }
-                
-                if let urlError = error as? URLError {
-                    self.logger.error("Network error: \(urlError.localizedDescription)")
-                    return PlacesServiceError.networkError(urlError)
-                }
-                
-                return PlacesServiceError.unknownError
-            }
-            .decode(type: PlacesResponse.self, decoder: JSONDecoder())
-            .map { response -> [Place] in
-                self.logger.notice("Decoded \(response.data.count) places from response")
-                return response.data
-            }
-            .mapError { error -> Error in
-                if let decodingError = error as? DecodingError {
-                    // Log more detailed decoding error information
-                    self.logger.error("Decoding error: \(decodingError.localizedDescription)")
-                    return PlacesServiceError.decodingError(decodingError)
-                }
-                return error
-            }
-            .eraseToAnyPublisher()
+        return error
     }
 } 

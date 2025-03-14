@@ -18,7 +18,9 @@ class ServiceContainer {
     
     // MARK: - Services
     let userPreferences: UserPreferences
-    let placesService: PlacesService
+    let networkService: NetworkServiceProtocol
+    let placesService: PlacesServiceProtocol
+    let locationManager: LocationManager
     
     // MARK: - View Models
     lazy var homeViewModel: HomeViewModel = {
@@ -27,8 +29,16 @@ class ServiceContainer {
     
     // MARK: - Initialization
     private init() {
+        // Initialize core services
         userPreferences = UserPreferences()
-        placesService = PlacesService()
+        
+        // Initialize network layer
+        let httpClient = DefaultHTTPClient(session: URLSession.shared)
+        networkService = NetworkService(httpClient: httpClient)
+        
+        // Initialize dependent services
+        placesService = PlacesService(networkService: networkService)
+        locationManager = LocationManager()
         
         // Log initialization
         logger.notice("ServiceContainer initialized with all services")
