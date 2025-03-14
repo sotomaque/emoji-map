@@ -164,6 +164,8 @@ class HomeViewModel: ObservableObject {
     
     /// Toggle a specific category
     func toggleCategory(key: Int, emoji: String) {
+        let wasEmpty = selectedCategoryKeys.isEmpty
+        
         if selectedCategoryKeys.contains(key) {
             selectedCategoryKeys.remove(key)
             logger.notice("Deselected category with key: \(key) \(emoji)")
@@ -178,6 +180,9 @@ class HomeViewModel: ObservableObject {
             logger.notice("No categories selected, switched to All mode")
         } else {
             isAllCategoriesMode = false
+            
+            // Fetch places by categories when we have categories selected
+            fetchPlacesByCategories()
         }
         
         logger.notice("Selected keys: \(self.selectedCategoryKeys)")
@@ -217,6 +222,52 @@ class HomeViewModel: ObservableObject {
         // Update filtered places
         filteredPlaces = filtered
         logger.notice("Applied filters: showing \(self.filteredPlaces.count) of \(self.places.count) places")
+    }
+    
+    /// Fetch places by selected category keys
+    private func fetchPlacesByCategories() {
+        // Only proceed if we have categories selected
+        guard !selectedCategoryKeys.isEmpty else {
+            logger.notice("No categories selected, skipping category-specific fetch")
+            return
+        }
+        
+        // Cancel any existing fetch task
+        fetchTask?.cancel()
+        
+        // Only proceed if we have a location
+        guard let location = visibleRegion?.center ?? locationManager.lastLocation?.coordinate else {
+            logger.error("Cannot fetch places by categories: No location available")
+            return
+        }
+        
+        logger.notice("Fetching places by categories: \(self.selectedCategoryKeys)")
+        
+        // Create a new fetch task
+        fetchTask = Task {
+            do {
+                let fetchedPlaces = try await placesService.fetchPlacesByCategories(
+                    location: location,
+                    categoryKeys: Array(selectedCategoryKeys)
+                )
+                
+                // Check if the task was cancelled
+                if Task.isCancelled { return }
+                
+                // Merge new places with existing places
+                mergePlaces(fetchedPlaces)
+                logger.notice("Fetched \(fetchedPlaces.count) places by categories, total places now: \(self.places.count)")
+                
+                // Apply filters to update filtered places
+                applyFilters()
+            } catch {
+                // Check if the task was cancelled
+                if Task.isCancelled { return }
+                
+                errorMessage = "Failed to load places by categories: \(error.localizedDescription)"
+                logger.error("Error fetching places by categories: \(error.localizedDescription)")
+            }
+        }
     }
     
     // MARK: - Private Methods

@@ -43,6 +43,7 @@ enum PlacesServiceError: Error, LocalizedError {
 protocol PlacesServiceProtocol {
     @MainActor func fetchNearbyPlaces(location: CLLocationCoordinate2D, useCache: Bool) async throws -> [Place]
     @MainActor func fetchNearbyPlacesPublisher(location: CLLocationCoordinate2D, useCache: Bool) -> AnyPublisher<[Place], Error>
+    @MainActor func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int]) async throws -> [Place]
     @MainActor func clearCache()
 }
 
@@ -108,6 +109,53 @@ class PlacesService: PlacesServiceProtocol {
             return response.data
         } catch {
             logger.error("Error fetching places: \(error.localizedDescription)")
+            throw mapToPlacesServiceError(error)
+        }
+    }
+    
+    /// Fetches places by specific category keys
+    /// - Parameters:
+    ///   - location: The center of the current viewport
+    ///   - categoryKeys: Array of category keys to filter by
+    /// - Returns: An array of places matching the specified categories
+    @MainActor
+    func fetchPlacesByCategories(
+        location: CLLocationCoordinate2D,
+        categoryKeys: [Int]
+    ) async throws -> [Place] {
+        // Create a cache key based on location and categories
+        let categoriesString = categoryKeys.sorted().map { String($0) }.joined(separator: "-")
+        let cacheKey = "\(createCacheKey(location: location))-categories-\(categoriesString)"
+        
+        // Check if we have cached data and it's still valid
+        if let cachedData = placesCache[cacheKey],
+           Date().timeIntervalSince(cachedData.timestamp) < cacheExpirationTime {
+            logger.notice("Using cached category-specific places data for location: \(location.latitude), \(location.longitude) and categories: \(categoryKeys)")
+            return cachedData.places
+        }
+        
+        // Otherwise fetch from the network
+        do {
+            // Create query items for each category key
+            var queryItems = categoryKeys.map { URLQueryItem(name: "keys", value: "\($0)") }
+            
+            // Add location parameter
+            queryItems.append(URLQueryItem(name: "location", value: "\(location.latitude),\(location.longitude)"))
+            
+            logger.notice("Fetching places for categories \(categoryKeys) at location: \(location.latitude), \(location.longitude)")
+            
+            let response: PlacesResponse = try await networkService.fetch(
+                endpoint: .nearbyPlaces,
+                queryItems: queryItems
+            )
+            
+            // Cache the results
+            placesCache[cacheKey] = (places: response.data, timestamp: Date())
+            logger.notice("Cached \(response.data.count) category-specific places for location: \(location.latitude), \(location.longitude) and categories: \(categoryKeys)")
+            
+            return response.data
+        } catch {
+            logger.error("Error fetching places by categories: \(error.localizedDescription)")
             throw mapToPlacesServiceError(error)
         }
     }
