@@ -110,22 +110,29 @@ struct Home: View {
                 .padding(.bottom, 20)
             }
             
-            // Loading indicator
+            // Loading indicator - only shown when there are no places
             if viewModel.isLoading {
                 VStack {
                     Spacer()
                     HStack {
                         Spacer()
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(1.5)
-                            .padding()
-                            .background(Color.black.opacity(0.7))
-                            .cornerRadius(10)
+                        VStack(spacing: 10) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(1.5)
+                            
+                            Text("Loading places...")
+                                .foregroundColor(.white)
+                                .font(.caption)
+                        }
+                        .padding()
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(10)
                         Spacer()
                     }
                     Spacer().frame(height: 100)
                 }
+                .allowsHitTesting(false) // Allow interaction with the map underneath
             }
             
             // Error message
@@ -139,6 +146,9 @@ struct Home: View {
                         .cornerRadius(10)
                         .padding(.bottom, 20)
                 }
+                .allowsHitTesting(false) // Allow interaction with the map underneath
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut, value: viewModel.errorMessage != nil)
             }
         }
         .sheet(isPresented: $viewModel.isFilterSheetPresented) {

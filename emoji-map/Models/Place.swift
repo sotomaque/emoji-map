@@ -23,6 +23,15 @@ struct Place: Identifiable, Codable, Equatable {
     var id: String
     var emoji: String
     var location: Location
+    var photos: [String] = [] // Array of photo URLs, with default empty array
+    
+    // Coding keys to match the API response
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case emoji
+        case location
+        // Note: photos is not included in CodingKeys since it's not in the API response
+    }
     
     // Nested Location structure
     struct Location: Codable, Equatable {

@@ -75,6 +75,7 @@ class PlacesService {
         
         // Otherwise fetch from the network
         return fetchPlacesFromNetwork(location: location)
+            .subscribe(on: DispatchQueue.global(qos: .userInitiated)) // Perform network operations on background thread
             .handleEvents(receiveOutput: { [weak self] places in
                 // Cache the results
                 self?.placesCache[cacheKey] = (places: places, timestamp: Date())
@@ -84,6 +85,7 @@ class PlacesService {
                     self?.logger.error("Error fetching places: \(error.localizedDescription)")
                 }
             })
+            .receive(on: DispatchQueue.main) // Switch back to main thread for UI updates
             .eraseToAnyPublisher()
     }
     
@@ -146,13 +148,6 @@ class PlacesService {
                     throw PlacesServiceError.serverError(httpResponse.statusCode)
                 }
                 
-                // Log the raw JSON response for debugging
-                if let jsonString = String(data: data, encoding: .utf8) {
-                    self.logger.notice("Raw JSON response: \(jsonString)")
-                } else {
-                    self.logger.error("Could not convert response data to string")
-                }
-                
                 return data
             }
             .mapError { error -> Error in
@@ -176,25 +171,10 @@ class PlacesService {
                 if let decodingError = error as? DecodingError {
                     // Log more detailed decoding error information
                     self.logger.error("Decoding error: \(decodingError.localizedDescription)")
-                    
-                    switch decodingError {
-                    case let .keyNotFound(key, context):
-                        self.logger.error("Key not found: \(key.stringValue), context: \(context.debugDescription), codingPath: \(context.codingPath.map { $0.stringValue })")
-                    case let .valueNotFound(type, context):
-                        self.logger.error("Value not found: \(type), context: \(context.debugDescription), codingPath: \(context.codingPath.map { $0.stringValue })")
-                    case let .typeMismatch(type, context):
-                        self.logger.error("Type mismatch: \(type), context: \(context.debugDescription), codingPath: \(context.codingPath.map { $0.stringValue })")
-                    case let .dataCorrupted(context):
-                        self.logger.error("Data corrupted: \(context.debugDescription), codingPath: \(context.codingPath.map { $0.stringValue })")
-                    @unknown default:
-                        self.logger.error("Unknown decoding error: \(decodingError)")
-                    }
-                    
                     return PlacesServiceError.decodingError(decodingError)
                 }
                 return error
             }
-            .receive(on: DispatchQueue.main)
             .eraseToAnyPublisher()
     }
 } 

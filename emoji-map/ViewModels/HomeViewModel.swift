@@ -160,7 +160,12 @@ class HomeViewModel: ObservableObject {
     
     /// Fetch nearby places from the service
     private func fetchNearbyPlaces(at coordinate: CLLocationCoordinate2D, useCache: Bool = true) {
-        isLoading = true
+        // Only show loading indicator if we have no places to display
+        let shouldShowLoading = places.isEmpty
+        if shouldShowLoading {
+            isLoading = true
+        }
+        
         errorMessage = nil
         
         // Store the current region as the last fetched region
@@ -172,7 +177,11 @@ class HomeViewModel: ObservableObject {
             .sink(receiveCompletion: { [weak self] completion in
                 guard let self = self else { return }
                 
-                self.isLoading = false
+                // Only hide loading if we were showing it
+                if shouldShowLoading {
+                    self.isLoading = false
+                }
+                
                 if case .failure(let error) = completion {
                     self.errorMessage = "Failed to load places: \(error.localizedDescription)"
                     self.logger.error("Error fetching places: \(error.localizedDescription)")
@@ -183,6 +192,11 @@ class HomeViewModel: ObservableObject {
                 // Merge new places with existing places instead of replacing
                 self.mergePlaces(fetchedPlaces)
                 self.logger.notice("Fetched \(fetchedPlaces.count) places, total places now: \(self.places.count)")
+                
+                // Hide loading indicator if it was showing
+                if shouldShowLoading {
+                    self.isLoading = false
+                }
             })
             .store(in: &cancellables)
     }
