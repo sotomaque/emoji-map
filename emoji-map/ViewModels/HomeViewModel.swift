@@ -19,6 +19,7 @@ class HomeViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var isFilterSheetPresented = false
+    @Published var isSettingsSheetPresented = false
     @Published var selectedPlace: Place?
     @Published var isPlaceDetailSheetPresented = false
     
@@ -37,7 +38,7 @@ class HomeViewModel: ObservableObject {
     let locationManager = LocationManager()
     
     // Services
-    private let placesService: PlacesServiceProtocol
+    let placesService: PlacesServiceProtocol
     
     // Logger
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "HomeViewModel")
@@ -124,6 +125,11 @@ class HomeViewModel: ObservableObject {
         isFilterSheetPresented.toggle()
     }
     
+    /// Toggle settings sheet
+    func toggleSettingsSheet() {
+        isSettingsSheetPresented.toggle()
+    }
+    
     /// Select a place and show its detail sheet
     func selectPlace(_ place: Place) {
         selectedPlace = place
@@ -164,8 +170,6 @@ class HomeViewModel: ObservableObject {
     
     /// Toggle a specific category
     func toggleCategory(key: Int, emoji: String) {
-        let wasEmpty = selectedCategoryKeys.isEmpty
-        
         if selectedCategoryKeys.contains(key) {
             selectedCategoryKeys.remove(key)
             logger.notice("Deselected category with key: \(key) \(emoji)")

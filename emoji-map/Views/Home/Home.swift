@@ -50,7 +50,6 @@ struct Home: View {
                 VStack(spacing: 0) {
                     // Category selector at the top
                     VStack {
-                        // Category selector
                         CategorySelector(viewModel: viewModel)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -60,35 +59,7 @@ struct Home: View {
                     
                     // Bottom buttons container
                     VStack {
-                        // Place counter at the top - updated to show filtered/total counts
-                        HStack {
-                            Text("\(viewModel.filteredPlaces.count)/\(viewModel.places.count) places")
-                                .font(.caption)
-                                .padding(8)
-                                .background(Color.white.opacity(0.8))
-                                .cornerRadius(8)
-                                .shadow(radius: 2)
-                                .padding(.leading, 20)
-                            
-                            Spacer()
-                            
-                            // Clear all button
-                            Button(action: {
-                                viewModel.clearPlaces()
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "trash")
-                                    Text("Clear")
-                                }
-                                .font(.caption)
-                                .padding(8)
-                                .background(Color.white.opacity(0.8))
-                                .cornerRadius(8)
-                                .shadow(radius: 2)
-                            }
-                            .padding(.trailing, 20)
-                        }
-                        
+                       
                         Spacer()
                         
                         HStack {
@@ -96,10 +67,10 @@ struct Home: View {
                             Button(action: {
                                 viewModel.toggleFilterSheet()
                             }) {
-                                Image(systemName: "line.3.horizontal.decrease.circle")
+                                Text("🔍")
                                     .font(.title2)
                                     .padding()
-                                    .background(Color.white)
+                                    .background(Color(.systemBackground))
                                     .clipShape(Circle())
                                     .shadow(radius: 4)
                             }
@@ -107,25 +78,22 @@ struct Home: View {
                             
                             Spacer()
                             
-                            // Refresh button
+                            // Settings button
                             Button(action: {
-                                // Pass false to add to existing places
-                                viewModel.refreshPlaces(clearExisting: false)
+                                viewModel.toggleSettingsSheet()
                             }) {
-                                Image(systemName: "arrow.clockwise")
+                                Text("⚙")
                                     .font(.title2)
                                     .padding()
-                                    .background(Color.white)
+                                    .background(Color(.systemBackground))
                                     .clipShape(Circle())
                                     .shadow(radius: 4)
                             }
-                            .disabled(viewModel.isLoading)
                             .padding(.trailing, 20)
                         }
                         .padding(.bottom, 20)
                     }
                 }
-                .padding(.bottom, geometry.safeAreaInsets.bottom)
             }
             
             // Loading indicator - only shown when there are no places
@@ -180,6 +148,11 @@ struct Home: View {
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
+        }
+        .sheet(isPresented: $viewModel.isSettingsSheetPresented) {
+            SettingsSheet(viewModel: viewModel)
+                .presentationDetents([.fraction(0.75), .large])
+                .presentationDragIndicator(.visible)
         }
         .onAppear {
             logger.notice("Home view appeared")
