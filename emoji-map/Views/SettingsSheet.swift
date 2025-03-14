@@ -34,10 +34,7 @@ struct SettingsSheet: View {
     
     // State for confirmation dialog
     @State private var showResetConfirmation = false
-    
-    // State for sign in sheet
-    @State private var showSignIn = false
-    
+        
     // State for Apple Sign In
     @State private var isAppleSignInLoading = false
     @State private var appleSignInError: String? = nil
@@ -125,70 +122,6 @@ struct SettingsSheet: View {
                     } else {
                         // User is not logged in
                         VStack(spacing: 8) {
-                            // Status info
-                            HStack {
-                                Text("Status")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                
-                                Spacer()
-                                
-                                Text("Not signed in")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
-                            
-                            // Sign In/Sign Up Buttons
-                            HStack(spacing: 12) {
-                                // Sign In Button
-                                Button(action: {
-                                    showSignIn = true
-                                    logger.notice("Sign in requested")
-                                }) {
-                                    HStack {
-                                        Image(systemName: "person.fill")
-                                            .foregroundColor(.blue)
-                                        Text("Sign In")
-                                            .fontWeight(.medium)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color(.systemGray6))
-                                    .cornerRadius(8)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                
-                                // Sign Up Button
-                                Button(action: {
-                                    showSignIn = true
-                                    logger.notice("Sign up requested")
-                                }) {
-                                    HStack {
-                                        Image(systemName: "person.badge.plus")
-                                            .foregroundColor(.green)
-                                        Text("Sign Up")
-                                            .fontWeight(.medium)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color(.systemGray6))
-                                    .cornerRadius(8)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                            
-                            // Sign in with Apple Button
-                            Text("Or sign in with")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.top, 8)
-                                .padding(.bottom, 4)
-                                
                             ZStack {
                                 SignInWithAppleButton(
                                     onRequest: { request in
@@ -391,9 +324,6 @@ struct SettingsSheet: View {
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView(userPreferences: userPreferences, isFromSettings: true)
         }
-        .sheet(isPresented: $showSignIn) {
-            SignInView()
-        }
         .alert(isPresented: $showAppleSignInError, content: {
             Alert(
                 title: Text("Sign In Error"),
@@ -499,7 +429,7 @@ struct SettingsSheet: View {
                     }
                     
                     // Verify that we have a valid nonce
-                    guard let nonce = currentNonce else {
+                    guard currentNonce != nil else {
                         logger.error("Invalid state: A login callback was received, but no login request was sent.")
                         appleSignInError = "Invalid state: Missing authentication data"
                         showAppleSignInError = true
