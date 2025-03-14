@@ -2,241 +2,97 @@
 //  LocationManager.swift
 //  emoji-map
 //
-//  Created by Enrique on 3/2/25.
+//  Created by Enrique on 3/13/25.
 //
 
-
+import Foundation
 import CoreLocation
-import UIKit
+import os.log
 
-// Protocol for LocationManager to enable mocking in tests
-protocol LocationManagerProtocol: AnyObject {
-    var location: CLLocation? { get }
-    var onLocationUpdate: ((CLLocation) -> Void)? { get set }
-    var authorizationStatus: CLAuthorizationStatus { get }
-    var onAuthorizationStatusChange: ((CLAuthorizationStatus) -> Void)? { get set }
-    func startUpdatingLocation()
-    func stopUpdatingLocation()
-    func requestLocationAuthorization()
-    func requestLocation()
-    func openAppSettings()
-}
-
-class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate, LocationManagerProtocol {
-    // Dependency injection for CLLocationManager to enable testing
-    private let clLocationManager: CLLocationManager
+/// Location Manager to handle location permissions and updates
+class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    private let locationManager = CLLocationManager()
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "LocationManager")
     
-    // Serial queue for thread synchronization
-    private let locationQueue: DispatchQueue
+    // Minimum distance (in meters) a device must move before an update event is generated
+    private let minimumDistanceFilter: Double = 10.0
     
-    // Private backing property for thread-safe access
-    private var locationBackingStore: CLLocation?
+    // Minimum time interval between location log messages (in seconds)
+    private let minimumLogInterval: TimeInterval = 5.0
     
-    // Published property for SwiftUI binding
-    @Published private(set) var location: CLLocation?
+    // Track the last logged location and timestamp
+    private var lastLoggedLocation: CLLocation?
+    private var lastLogTimestamp: Date = Date.distantPast
     
-    // Published property for authorization status
-    @Published private(set) var authorizationStatus: CLAuthorizationStatus = .notDetermined
+    @Published var authorizationStatus: CLAuthorizationStatus?
+    @Published var lastLocation: CLLocation?
     
-    // Thread-safe callback property
-    private var _onLocationUpdate: ((CLLocation) -> Void)?
-    var onLocationUpdate: ((CLLocation) -> Void)? {
-        get {
-            locationQueue.sync {
-                return _onLocationUpdate
-            }
-        }
-        set {
-            locationQueue.async {
-                self._onLocationUpdate = newValue
-            }
-        }
-    }
+    // Callback for when location updates
+    var onLocationUpdate: ((CLLocationCoordinate2D) -> Void)?
     
-    // Thread-safe callback property for authorization status changes
-    private var _onAuthorizationStatusChange: ((CLAuthorizationStatus) -> Void)?
-    var onAuthorizationStatusChange: ((CLAuthorizationStatus) -> Void)? {
-        get {
-            locationQueue.sync {
-                return _onAuthorizationStatusChange
-            }
-        }
-        set {
-            locationQueue.async {
-                self._onAuthorizationStatusChange = newValue
-            }
-        }
-    }
-    
-    // Initializer with dependency injection for testing
-    init(locationManager: CLLocationManager = CLLocationManager(),
-         queue: DispatchQueue = DispatchQueue(label: "com.emoji-map.locationQueue")) {
-        self.clLocationManager = locationManager
-        self.locationQueue = queue
-        
-        // Initialize with current authorization status
-        if #available(iOS 14.0, *) {
-            self.authorizationStatus = locationManager.authorizationStatus
-        } else {
-            self.authorizationStatus = CLLocationManager.authorizationStatus()
-        }
-        
+    override init() {
         super.init()
-        setupLocationManager()
-    }
-    
-    // Extracted setup logic for testability
-    func setupLocationManager() {
-        clLocationManager.delegate = self
-        requestLocationAuthorization()
-        startUpdatingLocation()
-    }
-    
-    // Public method to request authorization
-    func requestLocationAuthorization() {
-        clLocationManager.requestWhenInUseAuthorization()
-    }
-    
-    // Public method to request a one-time location update
-    func requestLocation() {
-        print("Requesting one-time location update")
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
         
-        // Set high accuracy for one-time request
-        let originalAccuracy = clLocationManager.desiredAccuracy
-        clLocationManager.desiredAccuracy = kCLLocationAccuracyBest
+        // Set distance filter to reduce update frequency
+        locationManager.distanceFilter = minimumDistanceFilter
         
-        // Request the location
-        clLocationManager.requestLocation()
-        
-        // Reset to original accuracy after a delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-            self?.clLocationManager.desiredAccuracy = originalAccuracy
-        }
+        logger.notice("LocationManager initialized")
     }
     
-    // Specific method to request when in use authorization
-    func requestWhenInUseAuthorization() {
-        print("Requesting when in use authorization")
-        clLocationManager.requestWhenInUseAuthorization()
-    }
-    
-    // Public method to start location updates
-    func startUpdatingLocation() {
-        print("Starting location updates")
-        clLocationManager.desiredAccuracy = kCLLocationAccuracyBest
-        clLocationManager.distanceFilter = 10 // Update when user moves 10 meters
-        clLocationManager.startUpdatingLocation()
-        
-        // If we already have a location, update it immediately
-        if let location = clLocationManager.location {
-            print("Using existing location from CLLocationManager: \(location.coordinate)")
-            updateLocation(location)
-        }
-    }
-    
-    // Public method to stop location updates
-    func stopUpdatingLocation() {
-        clLocationManager.stopUpdatingLocation()
-    }
-    
-    // Public method to open app settings
-    func openAppSettings() {
-        guard let settingsUrl = URL(string: UIApplication.openSettingsURLString) else {
-            return
-        }
-        
-        if UIApplication.shared.canOpenURL(settingsUrl) {
-            UIApplication.shared.open(settingsUrl)
-        }
-    }
-    
-    // Thread-safe method to update location
-    func updateLocation(_ newLocation: CLLocation?) {
-        locationQueue.async { [weak self] in
-            guard let self = self else { return }
-            self.locationBackingStore = newLocation
-            
-            // Dispatch UI updates to the main thread
-            DispatchQueue.main.async {
-                self.location = newLocation
-                if let newLocation = newLocation {
-                    self.onLocationUpdate?(newLocation)
-                }
-            }
-        }
-    }
-    
-    // Thread-safe method to update authorization status
-    private func updateAuthorizationStatus(_ newStatus: CLAuthorizationStatus) {
-        locationQueue.async { [weak self] in
-            guard let self = self else { return }
-            
-            // Dispatch UI updates to the main thread
-            DispatchQueue.main.async {
-                self.authorizationStatus = newStatus
-                self.onAuthorizationStatusChange?(newStatus)
-            }
-        }
-    }
-    
-    // MARK: - CLLocationManagerDelegate Methods
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let newLocation = locations.last else { return }
-        
-        // Only use locations that are recent and have good accuracy
-        let howRecent = newLocation.timestamp.timeIntervalSinceNow
-        guard abs(howRecent) < 15.0, newLocation.horizontalAccuracy < 100 else {
-            print("Ignoring location update: too old or poor accuracy")
-            return
-        }
-        
-        print("Received location update with accuracy \(newLocation.horizontalAccuracy)m: \(newLocation.coordinate)")
-        updateLocation(newLocation)
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        handleLocationError(error)
-    }
-    
-    // Extracted error handling for testability
-    func handleLocationError(_ error: Error) {
-        print("Failed to get location: \(error.localizedDescription)")
-        // Additional error handling logic can be added here
+    func requestAuthorization() {
+        locationManager.requestWhenInUseAuthorization()
     }
     
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        let status: CLAuthorizationStatus
+        authorizationStatus = manager.authorizationStatus
+        logger.notice("Location authorization status changed: \(manager.authorizationStatus.rawValue)")
         
-        if #available(iOS 14.0, *) {
-            status = manager.authorizationStatus
-        } else {
-            status = CLLocationManager.authorizationStatus()
-        }
-        
-        updateAuthorizationStatus(status)
-        handleAuthorizationChange(status)
-    }
-    
-    // For iOS 13 and earlier
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        updateAuthorizationStatus(status)
-        handleAuthorizationChange(status)
-    }
-    
-    // Extracted authorization handling for testability
-    func handleAuthorizationChange(_ status: CLAuthorizationStatus) {
-        switch status {
-        case .authorizedWhenInUse, .authorizedAlways:
-            startUpdatingLocation()
-        case .denied, .restricted:
-            print("Location access denied or restricted")
-            // Additional denied/restricted handling logic can be added here
-        case .notDetermined:
-            print("Location authorization not yet determined")
-            // Additional not determined handling logic can be added here
-        @unknown default:
-            print("Unknown authorization status")
+        if manager.authorizationStatus == .authorizedWhenInUse {
+            locationManager.startUpdatingLocation()
         }
     }
-}
+    
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        
+        // Always update the lastLocation property
+        lastLocation = location
+        
+        // Call the location update callback
+        onLocationUpdate?(location.coordinate)
+        
+        // Only log if this is a significant change or enough time has passed
+        let now = Date()
+        let shouldLog = shouldLogLocationUpdate(location: location, currentTime: now)
+        
+        if shouldLog {
+            logger.notice("Location updated: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+            lastLoggedLocation = location
+            lastLogTimestamp = now
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        logger.error("Location manager failed with error: \(error.localizedDescription)")
+    }
+    
+    // Helper method to determine if we should log this location update
+    private func shouldLogLocationUpdate(location: CLLocation, currentTime: Date) -> Bool {
+        // If we haven't logged anything yet, log this one
+        guard let lastLocation = lastLoggedLocation else {
+            return true
+        }
+        
+        // Check if enough time has passed since the last log
+        let timeElapsed = currentTime.timeIntervalSince(lastLogTimestamp)
+        if timeElapsed >= minimumLogInterval {
+            // Check if the distance is significant enough to log
+            let distance = location.distance(from: lastLocation)
+            return distance >= minimumDistanceFilter
+        }
+        
+        return false
+    }
+} 

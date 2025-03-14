@@ -1,17 +1,63 @@
 import SwiftUI
-import UIKit
+import Combine
+import os.log
+import CoreLocation
 
-struct EmojiSelector: View {
-    @EnvironmentObject private var viewModel: MapViewModel
-    @State private var showAllCategories = false
-    @State private var scrollOffset: CGFloat = 0
-    @State private var isDragging = false
-    @State private var isShuffleActive = false
+struct CategorySelector: View {
+    // MARK: - Properties
     
-    // Enhanced feedback for better user experience
+    // Logger for emoji selections
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "CategorySelector")
+    
+    // ViewModel
+    @ObservedObject var viewModel: HomeViewModel
+    
+    // Emoji categories with keys as provided
+    private let categories: [(key: Int, emoji: String, name: String)] = [
+        (1, "🍕", "pizza"),
+        (2, "🍺", "beer"),
+        (3, "🍣", "sushi"),
+        (4, "☕️", "coffee"),
+        (5, "🍔", "burger"),
+        (6, "🌮", "taco"),
+        (7, "🍜", "noodles"),
+        (8, "🥗", "salad"),
+        (9, "🍦", "icecream"),
+        (10, "🍷", "wine"),
+        (11, "🍲", "stew"),
+        (12, "🥪", "sandwich"),
+        (13, "🍝", "pasta"),
+        (14, "🥩", "steak"),
+        (15, "🍗", "chicken"),
+        (16, "🍤", "shrimp"),
+        (17, "🍛", "curry"),
+        (18, "🥘", "paella"),
+        (19, "🍱", "bento"),
+        (20, "🥟", "dumpling"),
+        (21, "🧆", "falafel"),
+        (22, "🥐", "croissant"),
+        (23, "🍨", "dessert"),
+        (24, "🍹", "cocktail"),
+        (25, "🍽️", "restaurant")
+    ]
+    
+    // Haptic feedback
     private let selectionFeedback = UIImpactFeedbackGenerator(style: .medium)
     private let scrollFeedback = UIImpactFeedbackGenerator(style: .light)
     private let edgeFeedback = UIImpactFeedbackGenerator(style: .rigid)
+    
+    // Scroll state
+    @State private var scrollOffset: CGFloat = 0
+    @State private var isDragging: Bool = false
+    @State private var isShuffleActive: Bool = false
+    
+    // MARK: - Initialization
+    
+    init(viewModel: HomeViewModel) {
+        self.viewModel = viewModel
+    }
+    
+    // MARK: - Body
     
     var body: some View {
         HStack(spacing: 12) {
@@ -69,18 +115,19 @@ struct EmojiSelector: View {
                             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.isAllCategoriesMode)
                         
                             // Show all categories in a single row for standard scrolling
-                            ForEach(viewModel.categories, id: \.1) { category in
-                                let emoji = category.0
-                                let categoryName = category.1
-                                let isSelected = viewModel.selectedCategories.contains(categoryName) && !viewModel.isAllCategoriesMode
+                            ForEach(categories, id: \.name) { category in
+                                let emoji = category.emoji
+                                let categoryName = category.name
+                                let categoryKey = category.key
+                                let isSelected = viewModel.selectedCategoryKeys.contains(categoryKey) && !viewModel.isAllCategoriesMode
                                 
                                 Button(action: {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        viewModel.toggleCategory(categoryName)
+                                        viewModel.toggleCategory(key: categoryKey, emoji: emoji)
                                         selectionFeedback.impactOccurred(intensity: 0.8)
                                         
                                         // Scroll to the selected category if it's newly selected
-                                        if !viewModel.isAllCategoriesMode && viewModel.selectedCategories.contains(categoryName) {
+                                        if !viewModel.isAllCategoriesMode && viewModel.selectedCategoryKeys.contains(categoryKey) {
                                             withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                                                 scrollProxy.scrollTo(categoryName, anchor: .center)
                                             }
@@ -135,10 +182,12 @@ struct EmojiSelector: View {
                     edgeFeedback.prepare()
                     
                     // Initial scroll to selected category if not in "All" mode
-                    if !viewModel.isAllCategoriesMode && !viewModel.selectedCategories.isEmpty {
+                    if !viewModel.isAllCategoriesMode && !viewModel.selectedCategoryKeys.isEmpty {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                                scrollProxy.scrollTo(viewModel.selectedCategories.first!, anchor: .center)
+                            if let firstCategory = categories.first(where: { viewModel.selectedCategoryKeys.contains($0.key) }) {
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                    scrollProxy.scrollTo(firstCategory.name, anchor: .center)
+                                }
                             }
                         }
                     }
@@ -170,11 +219,14 @@ struct EmojiSelector: View {
                         }
                 )
                 // React to changes in selection
-                .onChange(of: viewModel.selectedCategories) { oldValue, newValue in
+                .onChange(of: viewModel.selectedCategoryKeys) { oldValue, newValue in
                     // If we have a single selected category and not in "All" mode, scroll to it
                     if !viewModel.isAllCategoriesMode && newValue.count == 1 {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                            scrollProxy.scrollTo(newValue.first!, anchor: .center)
+                        if let firstKey = newValue.first,
+                           let firstCategory = categories.first(where: { $0.key == firstKey }) {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                scrollProxy.scrollTo(firstCategory.name, anchor: .center)
+                            }
                         }
                     } else if viewModel.isAllCategoriesMode {
                         // If in "All" mode, scroll to the "all" button
@@ -192,7 +244,7 @@ struct EmojiSelector: View {
                     isShuffleActive = true
                     
                     // Recommend a random place
-                    viewModel.recommendRandomPlace()
+                    recommendRandomPlace()
                     
                     // Reset shuffle animation after a delay
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -206,7 +258,7 @@ struct EmojiSelector: View {
                 )
             }
             .buttonStyle(EmojiButtonStyle())
-            .disabled(viewModel.isLoading || viewModel.filteredPlaces.isEmpty)
+            .disabled(viewModel.isLoading)
             .scaleEffect(isShuffleActive ? 1.2 : 1.0)
             .rotationEffect(isShuffleActive ? .degrees(180) : .degrees(0))
             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isShuffleActive)
@@ -215,13 +267,42 @@ struct EmojiSelector: View {
         .opacity(viewModel.isLoading ? 0.8 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
     }
-}
-
-// MARK: - Scroll Offset Preference Key
-struct ScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+    
+    // MARK: - Actions
+    
+    private func recommendRandomPlace() {
+        // Stub for random place recommendation
+        logger.notice("Recommending a random place")
+        logger.notice("Current selected keys: \(viewModel.selectedCategoryKeys)")
     }
 }
 
+#Preview {
+    VStack {
+        // Create a mock HomeViewModel for the preview
+        CategorySelector(viewModel: HomeViewModel(placesService: MockPlacesService()))
+            .padding(.vertical)
+        
+        Spacer()
+    }
+    .background(Color(.systemGroupedBackground))
+}
+
+// Mock service for preview
+private class MockPlacesService: PlacesServiceProtocol {
+    @MainActor func fetchNearbyPlaces(location: CLLocationCoordinate2D, useCache: Bool) async throws -> [Place] {
+        return []
+    }
+    
+    @MainActor func fetchNearbyPlacesPublisher(location: CLLocationCoordinate2D, useCache: Bool) -> AnyPublisher<[Place], Error> {
+        return Just([]).setFailureType(to: Error.self).eraseToAnyPublisher()
+    }
+    
+    @MainActor func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int]) async throws -> [Place] {
+        return []
+    }
+    
+    @MainActor func clearCache() {
+        // No-op for preview
+    }
+} 
