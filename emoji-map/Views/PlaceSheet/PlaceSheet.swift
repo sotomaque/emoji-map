@@ -72,6 +72,11 @@ struct PlaceDetailView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
+                    
+                    Spacer()
+                    
+                    // Heart button
+                    HeartButton()
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -292,6 +297,26 @@ struct FeatureBadge: View {
         .padding(.horizontal, 8)
         .background(color.opacity(0.1))
         .cornerRadius(4)
+    }
+}
+
+// Heart button for favorites
+struct HeartButton: View {
+    @State private var isFavorite = false
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "HeartButton")
+    
+    var body: some View {
+        Button(action: {
+            isFavorite.toggle()
+            logger.notice("Heart button clicked, favorite: \(isFavorite)")
+        }) {
+            Image(systemName: isFavorite ? "heart.fill" : "heart")
+                .font(.title2)
+                .foregroundColor(isFavorite ? .red : .gray)
+                .padding(8)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
