@@ -29,6 +29,7 @@ struct Home: View {
     
     var body: some View {
         ZStack {
+            // Map layer
             Map(position: $position) {
                 UserAnnotation()
                 
@@ -42,72 +43,89 @@ struct Home: View {
             .onMapCameraChange { context in
                 viewModel.handleMapRegionChange(context.region)
             }
+            .ignoresSafeArea(edges: .top)
             
-            // Bottom buttons container
-            VStack {
-                // Place counter at the top
-                HStack {
-                    Text("\(viewModel.places.count) places")
-                        .font(.caption)
-                        .padding(8)
-                        .background(Color.white.opacity(0.8))
-                        .cornerRadius(8)
-                        .shadow(radius: 2)
-                        .padding(.leading, 20)
+            // UI Overlay
+            GeometryReader { geometry in
+                VStack(spacing: 0) {
+                    // Category selector at the top
+                    VStack {
+                        // Category selector
+                        CategorySelector()
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                    }
                     
                     Spacer()
                     
-                    // Clear all button
-                    Button(action: {
-                        viewModel.clearPlaces()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "trash")
-                            Text("Clear")
+                    // Bottom buttons container
+                    VStack {
+                        // Place counter at the top
+                        HStack {
+                            Text("\(viewModel.places.count) places")
+                                .font(.caption)
+                                .padding(8)
+                                .background(Color.white.opacity(0.8))
+                                .cornerRadius(8)
+                                .shadow(radius: 2)
+                                .padding(.leading, 20)
+                            
+                            Spacer()
+                            
+                            // Clear all button
+                            Button(action: {
+                                viewModel.clearPlaces()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "trash")
+                                    Text("Clear")
+                                }
+                                .font(.caption)
+                                .padding(8)
+                                .background(Color.white.opacity(0.8))
+                                .cornerRadius(8)
+                                .shadow(radius: 2)
+                            }
+                            .padding(.trailing, 20)
                         }
-                        .font(.caption)
-                        .padding(8)
-                        .background(Color.white.opacity(0.8))
-                        .cornerRadius(8)
-                        .shadow(radius: 2)
+                        
+                        Spacer()
+                        
+                        HStack {
+                            // Filter button
+                            Button(action: {
+                                viewModel.toggleFilterSheet()
+                            }) {
+                                Image(systemName: "line.3.horizontal.decrease.circle")
+                                    .font(.title2)
+                                    .padding()
+                                    .background(Color.white)
+                                    .clipShape(Circle())
+                                    .shadow(radius: 4)
+                            }
+                            .padding(.leading, 20)
+                            
+                            Spacer()
+                            
+                            // Refresh button
+                            Button(action: {
+                                // Pass false to add to existing places
+                                viewModel.refreshPlaces(clearExisting: false)
+                            }) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.title2)
+                                    .padding()
+                                    .background(Color.white)
+                                    .clipShape(Circle())
+                                    .shadow(radius: 4)
+                            }
+                            .disabled(viewModel.isLoading)
+                            .padding(.trailing, 20)
+                        }
+                        .padding(.bottom, 20)
                     }
-                    .padding(.trailing, 20)
                 }
-                .padding(.top, 20)
-                
-                Spacer()
-                HStack {
-                    // Filter button
-                    Button(action: {
-                        viewModel.toggleFilterSheet()
-                    }) {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
-                            .font(.title2)
-                            .padding()
-                            .background(Color.white)
-                            .clipShape(Circle())
-                            .shadow(radius: 4)
-                    }
-                    .padding(.leading, 20)
-                    
-                    Spacer()
-                    
-                    // Refresh button
-                    Button(action: {
-                        // Pass false to add to existing places
-                        viewModel.refreshPlaces(clearExisting: false)
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.title2)
-                            .padding()
-                            .background(Color.white)
-                            .clipShape(Circle())
-                            .shadow(radius: 4)
-                    }
-                    .disabled(viewModel.isLoading)
-                    .padding(.trailing, 20)
-                }
-                .padding(.bottom, 20)
+                .padding(.bottom, geometry.safeAreaInsets.bottom)
             }
             
             // Loading indicator - only shown when there are no places
