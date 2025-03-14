@@ -30,7 +30,7 @@ struct Place: Identifiable, Codable, Equatable {
     var displayName: String?
     var rating: Double?
     var reviews: [PlaceDetails.Review]?
-    var priceLevel: String?
+    var priceLevel: Int?
     var userRatingCount: Int?
     var openNow: Bool?
     var primaryTypeDisplayName: String?

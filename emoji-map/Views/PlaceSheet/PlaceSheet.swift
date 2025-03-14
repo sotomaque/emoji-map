@@ -100,8 +100,8 @@ struct PlaceDetailView: View {
                         Spacer()
                         
                         // Price level
-                        if let priceLevel = viewModel.place.priceLevel, !priceLevel.isEmpty {
-                            Text(priceLevel)
+                        if let priceLevel = viewModel.place.priceLevel {
+                            Text(String(repeating: "$", count: priceLevel))
                                 .fontWeight(.semibold)
                         }
                     }
