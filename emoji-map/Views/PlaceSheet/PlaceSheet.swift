@@ -7,6 +7,7 @@
 
 import SwiftUI
 import os.log
+import UIKit
 
 struct PlaceSheet: View {
     var place: Place?
@@ -47,30 +48,77 @@ struct PlaceDetailView: View {
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 20) {
                 // Place header
-                HStack {
+                HStack(spacing: 16) {
                     Text(place.emoji)
                         .font(.system(size: 60))
+                        .padding(8)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.6))
+                        )
                     
-                    VStack(alignment: .leading) {
+                    VStack(alignment: .leading, spacing: 6) {
                         if let displayName = viewModel.place.displayName {
                             Text(displayName)
-                                .font(.headline)
+                                .font(.title3)
+                                .fontWeight(.bold)
                         } else {
-                            Text("ID: \(place.id)")
-                                .font(.headline)
+                            // Shimmer effect for loading name
+                            ShimmerView()
+                                .frame(width: 180, height: 22)
+                                .cornerRadius(4)
                         }
                         
                         if let primaryType = viewModel.place.primaryTypeDisplayName {
                             Text(primaryType)
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
+                        } else {
+                            // Shimmer effect for loading type
+                            ShimmerView()
+                                .frame(width: 100, height: 16)
+                                .cornerRadius(4)
                         }
                         
-                        Text("Location: \(String(format: "%.6f", place.location.latitude)), \(String(format: "%.6f", place.location.longitude))")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        // Rating stars
+                        if let rating = viewModel.place.rating {
+                            HStack(spacing: 4) {
+                                // Show actual stars
+                                HStack(spacing: 1) {
+                                    ForEach(1...5, id: \.self) { star in
+                                        Image(systemName: star <= Int(rating) ? "star.fill" : "star")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.yellow)
+                                    }
+                                }
+                                
+                                if let userRatingCount = viewModel.place.userRatingCount {
+                                    Text("(\(userRatingCount))")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                if let priceLevel = viewModel.place.priceLevel {
+                                    Text("•")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal, 2)
+                                    
+                                    Text(String(repeating: "$", count: priceLevel))
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                            .padding(.top, 2)
+                        } else if viewModel.isLoadingDetails {
+                            // Shimmer for rating
+                            ShimmerView()
+                                .frame(width: 120, height: 14)
+                                .cornerRadius(4)
+                                .padding(.top, 2)
+                        }
                     }
                     
                     Spacer()
@@ -80,89 +128,128 @@ struct PlaceDetailView: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.systemGray6))
+                .background(Color.yellow.opacity(0.3))
                 .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
                 
-                // Rating and details section
-                if let rating = viewModel.place.rating {
-                    HStack(spacing: 12) {
-                        // Rating stars
-                        HStack(spacing: 2) {
-                            ForEach(1...5, id: \.self) { star in
-                                Image(systemName: star <= Int(rating) ? "star.fill" : "star")
-                                    .foregroundColor(.yellow)
-                            }
-                        }
-                        
-                        Text(String(format: "%.1f", rating))
-                            .fontWeight(.bold)
-                        
-                        if let userRatingCount = viewModel.place.userRatingCount {
-                            Text("(\(userRatingCount) reviews)")
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        // Price level
-                        if let priceLevel = viewModel.place.priceLevel {
-                            Text(String(repeating: "$", count: priceLevel))
-                                .fontWeight(.semibold)
-                        }
+                // Location section
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "mappin.and.ellipse")
+                            .foregroundColor(.red)
+                        Text("Location")
+                            .font(.headline)
                     }
+                    .padding(.horizontal)
+                    
+                    Button(action: {
+                        // Open in Maps app
+                        let url = URL(string: "maps://?q=\(place.location.latitude),\(place.location.longitude)")!
+                        if UIApplication.shared.canOpenURL(url) {
+                            UIApplication.shared.open(url)
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "map.fill")
+                                .foregroundColor(.white)
+                            Text("Open in Maps")
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundColor(.white)
+                        }
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color.blue)
+                        .cornerRadius(10)
+                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                     .padding(.horizontal)
                 }
                 
                 // Features section
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Features")
-                        .font(.headline)
-                        .padding(.horizontal)
-                    
-                    // Grid of feature badges
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 8) {
-                        if viewModel.place.openNow == true {
-                            FeatureBadge(text: "Open Now", systemImage: "clock.fill", color: .green)
-                        }
-                        
-                        if viewModel.place.takeout == true {
-                            FeatureBadge(text: "Takeout", systemImage: "bag.fill", color: .blue)
-                        }
-                        
-                        if viewModel.place.delivery == true {
-                            FeatureBadge(text: "Delivery", systemImage: "bicycle", color: .orange)
-                        }
-                        
-                        if viewModel.place.dineIn == true {
-                            FeatureBadge(text: "Dine-in", systemImage: "fork.knife", color: .purple)
-                        }
-                        
-                        if viewModel.place.outdoorSeating == true {
-                            FeatureBadge(text: "Outdoor Seating", systemImage: "sun.max.fill", color: .yellow)
-                        }
-                        
-                        if viewModel.place.servesCoffee == true {
-                            FeatureBadge(text: "Coffee", systemImage: "cup.and.saucer.fill", color: .brown)
-                        }
-                        
-                        if viewModel.place.servesDessert == true {
-                            FeatureBadge(text: "Dessert", systemImage: "birthday.cake.fill", color: .pink)
-                        }
-                        
-                        if viewModel.place.goodForGroups == true {
-                            FeatureBadge(text: "Good for Groups", systemImage: "person.3.fill", color: .indigo)
-                        }
+                    HStack {
+                        Image(systemName: "star.square.fill")
+                            .foregroundColor(.orange)
+                        Text("Features")
+                            .font(.headline)
                     }
                     .padding(.horizontal)
+                    
+                    // Grid of feature badges
+                    if !viewModel.isLoadingDetails {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                            if viewModel.place.openNow == true {
+                                FeatureBadge(text: "Open Now", systemImage: "clock.fill", color: .green)
+                            }
+                            
+                            if viewModel.place.takeout == true {
+                                FeatureBadge(text: "Takeout", systemImage: "bag.fill", color: .blue)
+                            }
+                            
+                            if viewModel.place.delivery == true {
+                                FeatureBadge(text: "Delivery", systemImage: "bicycle", color: .orange)
+                            }
+                            
+                            if viewModel.place.dineIn == true {
+                                FeatureBadge(text: "Dine-in", systemImage: "fork.knife", color: .purple)
+                            }
+                            
+                            if viewModel.place.outdoorSeating == true {
+                                FeatureBadge(text: "Outdoor Seating", systemImage: "sun.max.fill", color: .yellow)
+                            }
+                            
+                            if viewModel.place.servesCoffee == true {
+                                FeatureBadge(text: "Coffee", systemImage: "cup.and.saucer.fill", color: .brown)
+                            }
+                            
+                            if viewModel.place.servesDessert == true {
+                                FeatureBadge(text: "Dessert", systemImage: "birthday.cake.fill", color: .pink)
+                            }
+                            
+                            if viewModel.place.goodForGroups == true {
+                                FeatureBadge(text: "Good for Groups", systemImage: "person.3.fill", color: .indigo)
+                            }
+                        }
+                        .padding(.horizontal)
+                    } else {
+                        // Shimmer for features
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                            ForEach(0..<6, id: \.self) { _ in
+                                HStack(spacing: 6) {
+                                    ShimmerView()
+                                        .frame(width: 24, height: 24)
+                                        .clipShape(Circle())
+                                    
+                                    ShimmerView()
+                                        .frame(height: 16)
+                                        .cornerRadius(4)
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
                 }
                 .padding(.top, 8)
                 
                 // Reviews section
                 if let reviews = viewModel.place.reviews, !reviews.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Reviews")
-                            .font(.headline)
-                            .padding(.horizontal)
+                        HStack {
+                            Image(systemName: "text.bubble.fill")
+                                .foregroundColor(.blue)
+                            Text("Reviews")
+                                .font(.headline)
+                        }
+                        .padding(.horizontal)
                         
                         ForEach(reviews.prefix(3)) { review in
                             VStack(alignment: .leading, spacing: 8) {
@@ -193,14 +280,59 @@ struct PlaceDetailView: View {
                             .padding(.horizontal)
                         }
                     }
+                } else if viewModel.isLoadingDetails {
+                    // Reviews section with shimmer
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "text.bubble.fill")
+                                .foregroundColor(.blue)
+                            Text("Reviews")
+                                .font(.headline)
+                        }
+                        .padding(.horizontal)
+                        
+                        // Show 2 shimmer placeholders for reviews
+                        ForEach(0..<2, id: \.self) { _ in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    ShimmerView()
+                                        .frame(width: 80, height: 16)
+                                        .cornerRadius(4)
+                                    
+                                    Spacer()
+                                    
+                                    ShimmerView()
+                                        .frame(width: 60, height: 16)
+                                        .cornerRadius(4)
+                                }
+                                
+                                ShimmerView()
+                                    .frame(height: 16)
+                                    .cornerRadius(4)
+                                
+                                ShimmerView()
+                                    .frame(height: 16)
+                                    .cornerRadius(4)
+                                    .padding(.trailing, 40)
+                            }
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                            .padding(.horizontal)
+                        }
+                    }
                 }
                 
                 // Photos section
                 if !viewModel.place.photos.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Photos")
-                            .font(.headline)
-                            .padding(.horizontal)
+                        HStack {
+                            Image(systemName: "photo.fill")
+                                .foregroundColor(.purple)
+                            Text("Photos")
+                                .font(.headline)
+                        }
+                        .padding(.horizontal)
                         
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
@@ -215,7 +347,8 @@ struct PlaceDetailView: View {
                                                 .resizable()
                                                 .aspectRatio(contentMode: .fill)
                                                 .frame(width: 150, height: 150)
-                                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                                .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
                                         case .failure:
                                             Image(systemName: "photo")
                                                 .font(.largeTitle)
@@ -230,41 +363,58 @@ struct PlaceDetailView: View {
                             .padding(.horizontal)
                         }
                     }
+                } else if viewModel.isLoadingPhotos {
+                    // Photos section with shimmer
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "photo.fill")
+                                .foregroundColor(.purple)
+                            Text("Photos")
+                                .font(.headline)
+                        }
+                        .padding(.horizontal)
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                // Show 3 shimmer placeholders
+                                ForEach(0..<3, id: \.self) { _ in
+                                    ShimmerView()
+                                        .frame(width: 150, height: 150)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
                 }
                 
-                // Loading indicators
+                // Loading indicators and error messages
                 VStack(alignment: .leading, spacing: 8) {
-                    if viewModel.isLoadingDetails {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Loading details...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    if viewModel.isLoadingPhotos {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Loading photos...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
                     // Error messages
                     if let detailsError = viewModel.detailsError {
-                        Text("Details error: \(detailsError)")
-                            .font(.caption)
-                            .foregroundColor(.red)
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text("Details error: \(detailsError)")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+                        .padding(8)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(8)
                     }
                     
                     if let photosError = viewModel.photosError {
-                        Text("Photos error: \(photosError)")
-                            .font(.caption)
-                            .foregroundColor(.red)
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text("Photos error: \(photosError)")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+                        .padding(8)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(8)
                     }
                 }
                 .padding(.horizontal)
@@ -287,16 +437,26 @@ struct FeatureBadge: View {
     let color: Color
     
     var body: some View {
-        HStack {
+        HStack(spacing: 6) {
             Image(systemName: systemImage)
-                .foregroundColor(color)
+                .foregroundColor(.white)
+                .padding(6)
+                .background(
+                    Circle()
+                        .fill(color)
+                )
+            
             Text(text)
-                .font(.caption)
+                .font(.subheadline)
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(color.opacity(0.1))
-        .cornerRadius(4)
+        .cornerRadius(8)
     }
 }
 
@@ -327,12 +487,41 @@ struct HeartButton: View {
             logger.notice("Heart button clicked for place ID: \(placeId), favorite: \(isFavorite)")
         }) {
             Image(systemName: isFavorite ? "heart.fill" : "heart")
-                .font(.title2)
+                .font(.title)
                 .foregroundColor(isFavorite ? .red : .gray)
-                .padding(8)
+                .padding(12)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.6))
+                )
                 .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// Shimmer effect view for loading states
+struct ShimmerView: View {
+    @State private var phase: CGFloat = 0
+    
+    var body: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: Color.gray.opacity(0.2), location: phase - 0.2),
+                        .init(color: Color.gray.opacity(0.3), location: phase),
+                        .init(color: Color.gray.opacity(0.2), location: phase + 0.2)
+                    ]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .onAppear {
+                withAnimation(Animation.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                    phase = 1
+                }
+            }
     }
 }
 

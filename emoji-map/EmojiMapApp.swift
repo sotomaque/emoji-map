@@ -51,7 +51,8 @@ struct EmojiMapApp: App {
                                 .opacity(contentOpacity)
                                 .animation(.easeIn(duration: 0.5), value: contentOpacity)
                         } else {
-                          ProgressView()
+                            // ProgressView showing up on Splash for some reason?
+                            ProgressView()
                         }
                     } else {
                         OnboardingView(userPreferences: userPreferences, isFromSettings: false)
