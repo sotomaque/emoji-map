@@ -1,23 +1,44 @@
 import SwiftUI
+import Combine
+import os.log
+import CoreLocation
 
 struct CategorySelector: View {
     // MARK: - Properties
     
-    // View model (simplified for now)
-    @State private var selectedCategories: Set<String> = []
-    @State private var isAllCategoriesMode: Bool = true
-    @State private var showFavoritesOnly: Bool = false
-    @State private var isLoading: Bool = false
+    // Logger for emoji selections
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "CategorySelector")
     
-    // Hard-coded emoji categories as requested
-    private let categories: [(String, String)] = [
-        ("🍔", "burger"),
-        ("🌮", "taco"),
-        ("🥗", "salad"),
-        ("🥪", "sandwich"),
-        ("🍕", "pizza"),
-        ("🍟", "fries"),
-        ("🍗", "chicken")
+    // ViewModel
+    @ObservedObject var viewModel: HomeViewModel
+    
+    // Emoji categories with keys as provided
+    private let categories: [(key: Int, emoji: String, name: String)] = [
+        (1, "🍕", "pizza"),
+        (2, "🍺", "beer"),
+        (3, "🍣", "sushi"),
+        (4, "☕️", "coffee"),
+        (5, "🍔", "burger"),
+        (6, "🌮", "taco"),
+        (7, "🍜", "noodles"),
+        (8, "🥗", "salad"),
+        (9, "🍦", "icecream"),
+        (10, "🍷", "wine"),
+        (11, "🍲", "stew"),
+        (12, "🥪", "sandwich"),
+        (13, "🍝", "pasta"),
+        (14, "🥩", "steak"),
+        (15, "🍗", "chicken"),
+        (16, "🍤", "shrimp"),
+        (17, "🍛", "curry"),
+        (18, "🥘", "paella"),
+        (19, "🍱", "bento"),
+        (20, "🥟", "dumpling"),
+        (21, "🧆", "falafel"),
+        (22, "🥐", "croissant"),
+        (23, "🍨", "dessert"),
+        (24, "🍹", "cocktail"),
+        (25, "🍽️", "restaurant")
     ]
     
     // Haptic feedback
@@ -30,6 +51,12 @@ struct CategorySelector: View {
     @State private var isDragging: Bool = false
     @State private var isShuffleActive: Bool = false
     
+    // MARK: - Initialization
+    
+    init(viewModel: HomeViewModel) {
+        self.viewModel = viewModel
+    }
+    
     // MARK: - Body
     
     var body: some View {
@@ -37,19 +64,19 @@ struct CategorySelector: View {
             // MARK: - Left Section: Favorites Button
             Button(action: {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    toggleFavoritesFilter()
+                    viewModel.toggleFavoritesFilter()
                     selectionFeedback.impactOccurred(intensity: 0.8)
                 }
             }) {
                 FavoritesButton(
-                    isSelected: showFavoritesOnly,
-                    isLoading: isLoading
+                    isSelected: viewModel.showFavoritesOnly,
+                    isLoading: viewModel.isLoading
                 )
             }
             .buttonStyle(EmojiButtonStyle())
-            .disabled(isLoading)
-            .scaleEffect(showFavoritesOnly ? 1.1 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: showFavoritesOnly)
+            .disabled(viewModel.isLoading)
+            .scaleEffect(viewModel.showFavoritesOnly ? 1.1 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.showFavoritesOnly)
             
             // MARK: - Middle Section: Emoji Categories
             ScrollViewReader { scrollProxy in
@@ -72,34 +99,35 @@ struct CategorySelector: View {
                             Button(action: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     // Toggle all categories instead of just clearing
-                                    toggleAllCategories()
+                                    viewModel.toggleAllCategories()
                                     selectionFeedback.impactOccurred(intensity: 0.8)
                                 }
                             }) {
                                 AllCategoriesButton(
-                                    isSelected: isAllCategoriesMode,
-                                    isLoading: isLoading
+                                    isSelected: viewModel.isAllCategoriesMode,
+                                    isLoading: viewModel.isLoading
                                 )
                             }
                             .buttonStyle(EmojiButtonStyle())
-                            .disabled(isLoading)
+                            .disabled(viewModel.isLoading)
                             .id("all") // ID for scrolling
-                            .scaleEffect(isAllCategoriesMode ? 1.1 : 1.0)
-                            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isAllCategoriesMode)
+                            .scaleEffect(viewModel.isAllCategoriesMode ? 1.1 : 1.0)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.isAllCategoriesMode)
                         
                             // Show all categories in a single row for standard scrolling
-                            ForEach(categories, id: \.1) { category in
-                                let emoji = category.0
-                                let categoryName = category.1
-                                let isSelected = selectedCategories.contains(categoryName) && !isAllCategoriesMode
+                            ForEach(categories, id: \.name) { category in
+                                let emoji = category.emoji
+                                let categoryName = category.name
+                                let categoryKey = category.key
+                                let isSelected = viewModel.selectedCategoryKeys.contains(categoryKey) && !viewModel.isAllCategoriesMode
                                 
                                 Button(action: {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        toggleCategory(categoryName)
+                                        viewModel.toggleCategory(key: categoryKey, emoji: emoji)
                                         selectionFeedback.impactOccurred(intensity: 0.8)
                                         
                                         // Scroll to the selected category if it's newly selected
-                                        if !isAllCategoriesMode && selectedCategories.contains(categoryName) {
+                                        if !viewModel.isAllCategoriesMode && viewModel.selectedCategoryKeys.contains(categoryKey) {
                                             withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                                                 scrollProxy.scrollTo(categoryName, anchor: .center)
                                             }
@@ -109,11 +137,11 @@ struct CategorySelector: View {
                                     EmojiButton(
                                         emoji: emoji,
                                         isSelected: isSelected,
-                                        isLoading: isLoading
+                                        isLoading: viewModel.isLoading
                                     )
                                 }
                                 .buttonStyle(EmojiButtonStyle())
-                                .disabled(isLoading)
+                                .disabled(viewModel.isLoading)
                                 .id(categoryName) // ID for scrolling
                                 .scaleEffect(isSelected ? 1.1 : 1.0)
                                 .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSelected)
@@ -154,10 +182,12 @@ struct CategorySelector: View {
                     edgeFeedback.prepare()
                     
                     // Initial scroll to selected category if not in "All" mode
-                    if !isAllCategoriesMode && !selectedCategories.isEmpty {
+                    if !viewModel.isAllCategoriesMode && !viewModel.selectedCategoryKeys.isEmpty {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                                scrollProxy.scrollTo(selectedCategories.first!, anchor: .center)
+                            if let firstCategory = categories.first(where: { viewModel.selectedCategoryKeys.contains($0.key) }) {
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                    scrollProxy.scrollTo(firstCategory.name, anchor: .center)
+                                }
                             }
                         }
                     }
@@ -189,13 +219,16 @@ struct CategorySelector: View {
                         }
                 )
                 // React to changes in selection
-                .onChange(of: selectedCategories) { oldValue, newValue in
+                .onChange(of: viewModel.selectedCategoryKeys) { oldValue, newValue in
                     // If we have a single selected category and not in "All" mode, scroll to it
-                    if !isAllCategoriesMode && newValue.count == 1 {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                            scrollProxy.scrollTo(newValue.first!, anchor: .center)
+                    if !viewModel.isAllCategoriesMode && newValue.count == 1 {
+                        if let firstKey = newValue.first,
+                           let firstCategory = categories.first(where: { $0.key == firstKey }) {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                scrollProxy.scrollTo(firstCategory.name, anchor: .center)
+                            }
                         }
-                    } else if isAllCategoriesMode {
+                    } else if viewModel.isAllCategoriesMode {
                         // If in "All" mode, scroll to the "all" button
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                             scrollProxy.scrollTo("all", anchor: .center)
@@ -221,68 +254,51 @@ struct CategorySelector: View {
             }) {
                 ShuffleButton(
                     isSelected: isShuffleActive,
-                    isLoading: isLoading
+                    isLoading: viewModel.isLoading
                 )
             }
             .buttonStyle(EmojiButtonStyle())
-            .disabled(isLoading)
+            .disabled(viewModel.isLoading)
             .scaleEffect(isShuffleActive ? 1.2 : 1.0)
             .rotationEffect(isShuffleActive ? .degrees(180) : .degrees(0))
             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isShuffleActive)
         }
         .padding(.horizontal, 12)
-        .opacity(isLoading ? 0.8 : 1.0)
-        .animation(.easeInOut(duration: 0.2), value: isLoading)
+        .opacity(viewModel.isLoading ? 0.8 : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
     }
     
     // MARK: - Actions
     
-    private func toggleFavoritesFilter() {
-        showFavoritesOnly.toggle()
-        // In a real implementation, this would filter places
-        print("Toggled favorites filter: \(showFavoritesOnly)")
-    }
-    
-    private func toggleAllCategories() {
-        isAllCategoriesMode.toggle()
-        
-        if isAllCategoriesMode {
-            // Clear selected categories when "All" is selected
-            selectedCategories.removeAll()
-        }
-        
-        print("Toggled all categories mode: \(isAllCategoriesMode)")
-    }
-    
-    private func toggleCategory(_ category: String) {
-        if selectedCategories.contains(category) {
-            selectedCategories.remove(category)
-        } else {
-            selectedCategories.insert(category)
-        }
-        
-        // If no categories are selected, switch to "All" mode
-        if selectedCategories.isEmpty {
-            isAllCategoriesMode = true
-        } else {
-            isAllCategoriesMode = false
-        }
-        
-        print("Selected categories: \(selectedCategories)")
-    }
-    
     private func recommendRandomPlace() {
         // Stub for random place recommendation
-        print("Recommending a random place")
+        logger.notice("Recommending a random place")
+        logger.notice("Current selected keys: \(viewModel.selectedCategoryKeys)")
     }
 }
 
 #Preview {
     VStack {
-        CategorySelector()
+        // Create a mock HomeViewModel for the preview
+        CategorySelector(viewModel: HomeViewModel(placesService: MockPlacesService()))
             .padding(.vertical)
         
         Spacer()
     }
     .background(Color(.systemGroupedBackground))
+}
+
+// Mock service for preview
+private class MockPlacesService: PlacesServiceProtocol {
+    @MainActor func fetchNearbyPlaces(location: CLLocationCoordinate2D, useCache: Bool) async throws -> [Place] {
+        return []
+    }
+    
+    @MainActor func fetchNearbyPlacesPublisher(location: CLLocationCoordinate2D, useCache: Bool) -> AnyPublisher<[Place], Error> {
+        return Just([]).setFailureType(to: Error.self).eraseToAnyPublisher()
+    }
+    
+    @MainActor func clearCache() {
+        // No-op for preview
+    }
 } 

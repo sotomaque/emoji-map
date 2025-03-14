@@ -15,11 +15,17 @@ import os.log
 class HomeViewModel: ObservableObject {
     // Published properties for UI state
     @Published var places: [Place] = []
+    @Published var filteredPlaces: [Place] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var isFilterSheetPresented = false
     @Published var selectedPlace: Place?
     @Published var isPlaceDetailSheetPresented = false
+    
+    // Category selection state
+    @Published var selectedCategoryKeys: Set<Int> = []
+    @Published var isAllCategoriesMode: Bool = true
+    @Published var showFavoritesOnly: Bool = false
     
     // Map state
     @Published var visibleRegion: MKCoordinateRegion?
@@ -131,6 +137,88 @@ class HomeViewModel: ObservableObject {
         isPlaceDetailSheetPresented = false
     }
     
+    // MARK: - Category Selection Methods
+    
+    /// Toggle favorites filter
+    func toggleFavoritesFilter() {
+        showFavoritesOnly.toggle()
+        logger.notice("Toggled favorites filter: \(self.showFavoritesOnly ? "ON" : "OFF")")
+        applyFilters()
+    }
+    
+    /// Toggle all categories mode
+    func toggleAllCategories() {
+        isAllCategoriesMode.toggle()
+        
+        if isAllCategoriesMode {
+            // Clear selected categories when "All" is selected
+            selectedCategoryKeys.removeAll()
+            logger.notice("All categories mode enabled, cleared selected categories")
+        } else {
+            logger.notice("All categories mode disabled")
+        }
+        
+        logger.notice("Selected keys: \(self.selectedCategoryKeys)")
+        applyFilters()
+    }
+    
+    /// Toggle a specific category
+    func toggleCategory(key: Int, emoji: String) {
+        if selectedCategoryKeys.contains(key) {
+            selectedCategoryKeys.remove(key)
+            logger.notice("Deselected category with key: \(key) \(emoji)")
+        } else {
+            selectedCategoryKeys.insert(key)
+            logger.notice("Selected category with key: \(key) \(emoji)")
+        }
+        
+        // If no categories are selected, switch to "All" mode
+        if selectedCategoryKeys.isEmpty {
+            isAllCategoriesMode = true
+            logger.notice("No categories selected, switched to All mode")
+        } else {
+            isAllCategoriesMode = false
+        }
+        
+        logger.notice("Selected keys: \(self.selectedCategoryKeys)")
+        applyFilters()
+    }
+    
+    /// Apply filters to places based on selected categories
+    private func applyFilters() {
+        // Start with all places
+        var filtered = places
+        
+        // Apply category filter if not in "All" mode
+        if !isAllCategoriesMode && !selectedCategoryKeys.isEmpty {
+            // Convert emoji to keys for filtering
+            let emojiToKeyMap: [String: Int] = [
+                "🍕": 1, "🍺": 2, "🍣": 3, "☕️": 4, "🍔": 5,
+                "🌮": 6, "🍜": 7, "🥗": 8, "🍦": 9, "🍷": 10,
+                "🍲": 11, "🥪": 12, "🍝": 13, "🥩": 14, "🍗": 15,
+                "🍤": 16, "🍛": 17, "🥘": 18, "🍱": 19, "🥟": 20,
+                "🧆": 21, "🥐": 22, "🍨": 23, "🍹": 24, "🍽️": 25
+            ]
+            
+            filtered = filtered.filter { place in
+                if let key = emojiToKeyMap[place.emoji] {
+                    return selectedCategoryKeys.contains(key)
+                }
+                return false
+            }
+        }
+        
+        // Apply favorites filter (placeholder - would need to implement favorites functionality)
+        if showFavoritesOnly {
+            // This is a placeholder - you would need to implement favorites functionality
+            // filtered = filtered.filter { isFavorite($0) }
+        }
+        
+        // Update filtered places
+        filteredPlaces = filtered
+        logger.notice("Applied filters: showing \(self.filteredPlaces.count) of \(self.places.count) places")
+    }
+    
     // MARK: - Private Methods
     
     /// Determine if we should fetch new data based on region change
@@ -191,6 +279,9 @@ class HomeViewModel: ObservableObject {
                 mergePlaces(fetchedPlaces)
                 logger.notice("Fetched \(fetchedPlaces.count) places, total places now: \(self.places.count)")
                 
+                // Apply filters to update filtered places
+                applyFilters()
+                
                 // Hide loading indicator if it was showing
                 if shouldShowLoading {
                     isLoading = false
@@ -245,6 +336,9 @@ class HomeViewModel: ObservableObject {
                 self.mergePlaces(fetchedPlaces)
                 self.logger.notice("Fetched \(fetchedPlaces.count) places, total places now: \(self.places.count)")
                 
+                // Apply filters to update filtered places
+                self.applyFilters()
+                
                 // Hide loading indicator if it was showing
                 if shouldShowLoading {
                     self.isLoading = false
@@ -280,6 +374,7 @@ class HomeViewModel: ObservableObject {
     /// Clear all places (useful for reset functionality if needed)
     func clearPlaces() {
         places.removeAll()
+        filteredPlaces.removeAll()
         logger.notice("Cleared all places")
     }
 } 

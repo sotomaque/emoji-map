@@ -33,8 +33,8 @@ struct Home: View {
             Map(position: $position) {
                 UserAnnotation()
                 
-                // Display place annotations
-                ForEach(viewModel.places) { place in
+                // Display place annotations - use filteredPlaces instead of places
+                ForEach(viewModel.filteredPlaces) { place in
                     place.mapAnnotation(onTap: { selectedPlace in
                         viewModel.selectPlace(selectedPlace)
                     })
@@ -51,7 +51,7 @@ struct Home: View {
                     // Category selector at the top
                     VStack {
                         // Category selector
-                        CategorySelector()
+                        CategorySelector(viewModel: viewModel)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                     }
@@ -60,9 +60,9 @@ struct Home: View {
                     
                     // Bottom buttons container
                     VStack {
-                        // Place counter at the top
+                        // Place counter at the top - updated to show filtered/total counts
                         HStack {
-                            Text("\(viewModel.places.count) places")
+                            Text("\(viewModel.filteredPlaces.count)/\(viewModel.places.count) places")
                                 .font(.caption)
                                 .padding(8)
                                 .background(Color.white.opacity(0.8))
