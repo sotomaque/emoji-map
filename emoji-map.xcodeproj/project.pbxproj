@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CDA8AD482D84954C009488F2 /* Clerk in Frameworks */ = {isa = PBXBuildFile; productRef = CDA8AD472D84954C009488F2 /* Clerk */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		CD12CBEB2D7522C200EFAD77 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CDA8AD482D84954C009488F2 /* Clerk in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = "emoji-map";
 			packageProductDependencies = (
+				CDA8AD472D84954C009488F2 /* Clerk */,
 			);
 			productName = "emoji-map";
 			productReference = CD12CBDA2D7522BB00EFAD77 /* emoji-map.app */;
@@ -169,6 +175,7 @@
 			mainGroup = CD12CBD12D7522BB00EFAD77;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				CDA8AD462D84947B009488F2 /* XCRemoteSwiftPackageReference "clerk-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CD12CBDB2D7522BB00EFAD77 /* Products */;
@@ -507,6 +514,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CDA8AD462D84947B009488F2 /* XCRemoteSwiftPackageReference "clerk-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/clerk/clerk-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.50.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CDA8AD472D84954C009488F2 /* Clerk */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CDA8AD462D84947B009488F2 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = Clerk;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CD12CBD22D7522BB00EFAD77 /* Project object */;
 }
