@@ -518,8 +518,18 @@ struct UserRatingView: View {
     let isLoading: Bool
     @State private var userRating: Int = 0
     
+    // Access to user preferences
+    @ObservedObject private var userPreferences = ServiceContainer.shared.userPreferences
+    
     // Logger
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "UserRatingView")
+    
+    init(placeId: String, isLoading: Bool) {
+        self.placeId = placeId
+        self.isLoading = isLoading
+        // Initialize rating from UserPreferences
+        self._userRating = State(initialValue: ServiceContainer.shared.userPreferences.getRating(placeId: placeId))
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -558,6 +568,9 @@ struct UserRatingView: View {
                                 
                                 // Update rating
                                 userRating = star
+                                
+                                // Save rating to UserPreferences
+                                userPreferences.setRating(placeId: placeId, rating: star)
                                 
                                 // Trigger haptic feedback
                                 generator.impactOccurred()

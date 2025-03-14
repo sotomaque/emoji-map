@@ -8,10 +8,12 @@ class UserPreferences: ObservableObject {
     @Published var hasCompletedOnboarding: Bool = false
     @Published var hasLaunchedBefore: Bool = false
     @Published var favoritePlaceIds: Set<String> = []
+    @Published var placeRatings: [String: Int] = [:]
     
     private let onboardingKey = "has_completed_onboarding"
     private let hasLaunchedBeforeKey = "has_launched_before"
     private let favoritePlacesKey = "favorite_place_ids"
+    private let placeRatingsKey = "place_ratings"
     
     let userDefaults: UserDefaults
     
@@ -23,6 +25,7 @@ class UserPreferences: ObservableObject {
         loadOnboardingStatus()
         loadLaunchStatus()
         loadFavoritePlaces()
+        loadPlaceRatings()
         
         // Mark that the app has been launched
         if !hasLaunchedBefore {
@@ -102,6 +105,46 @@ class UserPreferences: ObservableObject {
         }
     }
     
+    // MARK: - Place Ratings
+    
+    /// Set a rating for a place
+    /// - Parameters:
+    ///   - placeId: The ID of the place to rate
+    ///   - rating: The rating value (1-5)
+    func setRating(placeId: String, rating: Int) {
+        // Ensure rating is within valid range
+        let validRating = max(0, min(5, rating))
+        
+        // Update the rating
+        placeRatings[placeId] = validRating
+        
+        // Save to UserDefaults
+        savePlaceRatings()
+        
+        logger.notice("Set rating \(validRating) for place: \(placeId)")
+    }
+    
+    /// Get the user's rating for a place
+    /// - Parameter placeId: The ID of the place to check
+    /// - Returns: The rating (0-5, where 0 means no rating)
+    func getRating(placeId: String) -> Int {
+        return placeRatings[placeId] ?? 0
+    }
+    
+    /// Save place ratings to UserDefaults
+    private func savePlaceRatings() {
+        userDefaults.set(placeRatings, forKey: placeRatingsKey)
+        userDefaults.synchronize()
+    }
+    
+    /// Load place ratings from UserDefaults
+    private func loadPlaceRatings() {
+        if let savedRatings = userDefaults.dictionary(forKey: placeRatingsKey) as? [String: Int] {
+            placeRatings = savedRatings
+            logger.notice("Loaded \(self.placeRatings.count) place ratings from UserDefaults")
+        }
+    }
+    
     // MARK: - Data Reset
     
     func resetAllData() {
@@ -109,11 +152,13 @@ class UserPreferences: ObservableObject {
         hasCompletedOnboarding = false
         hasLaunchedBefore = false
         favoritePlaceIds.removeAll()
+        placeRatings.removeAll()
         
         // Clear all data from UserDefaults
         userDefaults.removeObject(forKey: onboardingKey)
         userDefaults.removeObject(forKey: hasLaunchedBeforeKey)
         userDefaults.removeObject(forKey: favoritePlacesKey)
+        userDefaults.removeObject(forKey: placeRatingsKey)
         userDefaults.synchronize()
         
         // Notify observers

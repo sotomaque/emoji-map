@@ -104,10 +104,14 @@ extension Place {
             // Check if this place is favorited
             let isFavorited = ServiceContainer.shared.userPreferences.isFavorite(placeId: id)
             
+            // Get user rating if available
+            let userRating = ServiceContainer.shared.userPreferences.getRating(placeId: id)
+            
             // Use the new PlaceAnnotation view
             PlaceAnnotation(
                 emoji: emoji,
                 isFavorite: isFavorited,
+                userRating: userRating,
                 isLoading: false,
                 onTap: { onTap(self) }
             )
