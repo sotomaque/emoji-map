@@ -156,6 +156,11 @@ struct Home: View {
         }
         .onAppear {
             logger.notice("Home view appeared")
+            
+            // Fetch user data in the background
+            Task {
+                await viewModel.fetchUserData()
+            }
         }
     }
 }

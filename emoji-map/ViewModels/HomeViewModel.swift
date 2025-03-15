@@ -10,6 +10,7 @@ import CoreLocation
 import MapKit
 import Combine
 import os.log
+import Clerk
 
 @MainActor
 class HomeViewModel: ObservableObject {
@@ -23,6 +24,10 @@ class HomeViewModel: ObservableObject {
     @Published var selectedPlace: Place?
     @Published var isPlaceDetailSheetPresented = false
     
+    // User data
+    @Published var currentUser: User?
+    @Published var isLoadingUser = false
+    
     // Category selection state
     @Published var selectedCategoryKeys: Set<Int> = []
     @Published var isAllCategoriesMode: Bool = true
@@ -33,12 +38,14 @@ class HomeViewModel: ObservableObject {
     private var lastFetchedRegion: MKCoordinateRegion?
     private var regionChangeDebounceTask: Task<Void, Never>?
     private var fetchTask: Task<Void, Never>?
+    private var isSuperZoomedIn: Bool = false // Track super zoomed in state
     
     // Location manager
     let locationManager = LocationManager()
     
     // Services
     let placesService: PlacesServiceProtocol
+    let userPreferences: UserPreferences
     
     // Logger
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "HomeViewModel")
@@ -48,11 +55,17 @@ class HomeViewModel: ObservableObject {
     
     // MARK: - Initialization
     
-    init(placesService: PlacesServiceProtocol) {
+    init(placesService: PlacesServiceProtocol, userPreferences: UserPreferences) {
         self.placesService = placesService
+        self.userPreferences = userPreferences
         logger.notice("HomeViewModel initialized")
         
         setupLocationManager()
+        
+        // Fetch user data in the background
+        Task {
+            await fetchUserData()
+        }
     }
     
     deinit {
@@ -62,6 +75,104 @@ class HomeViewModel: ObservableObject {
     }
     
     // MARK: - Public Methods
+    
+    /// Fetch user data from the API
+    func fetchUserData() async {
+        logger.notice("Checking for authenticated user")
+        
+        // Get Clerk instance
+        let clerk = Clerk.shared
+        
+        // Make sure Clerk is fully loaded
+        if !clerk.isLoaded {
+            logger.notice("Clerk is not fully loaded yet. Skipping user data request.")
+            return
+        }
+        
+        // Check if user is authenticated
+        if let clerkUser = clerk.user {
+            logger.notice("User is authenticated with Clerk. User ID: \(clerkUser.id)")
+            
+            // Set loading state
+            isLoadingUser = true
+            
+            do {
+                // Get the network service from the service container
+                let networkService = ServiceContainer.shared.networkService
+                
+                // Create query items with the user ID
+                let queryItems = [URLQueryItem(name: "userId", value: clerkUser.id)]
+                
+                logger.notice("Making request to /api/user with userId: \(clerkUser.id)")
+                
+                // Make the request to the user endpoint with the user ID
+                let userResponse: UserResponse = try await networkService.fetch(
+                    endpoint: .user,
+                    queryItems: queryItems,
+                    authToken: nil
+                )
+                
+                // Log the raw response structure
+                logger.notice("User response received with user ID: \(userResponse.user.id)")
+                
+                // Convert the response to a User model
+                let user = userResponse.toUser
+                
+                // Log the user data
+                logger.notice("User data fetched successfully:")
+                logger.notice("  ID: \(user.id)")
+                logger.notice("  Email: \(user.email)")
+                logger.notice("  Username: \(user.username ?? "N/A")")
+                logger.notice("  Name: \(user.firstName ?? "") \(user.lastName ?? "")")
+                
+                if let createdAt = user.createdAt {
+                    let formatter = DateFormatter()
+                    formatter.dateStyle = .medium
+                    formatter.timeStyle = .short
+                    logger.notice("  Created: \(formatter.string(from: createdAt))")
+                }
+                
+                // Log favorites information
+                logger.notice("  Favorites: \(user.favorites.count)")
+                for (index, favorite) in user.favorites.enumerated() {
+                    logger.notice("    Favorite \(index + 1): Place ID: \(favorite.placeId)")
+                }
+                
+                // Log ratings information
+                logger.notice("  Ratings: \(user.ratings.count)")
+                for (index, rating) in user.ratings.enumerated() {
+                    logger.notice("    Rating \(index + 1): Place ID: \(rating.placeId), Rating: \(rating.rating)")
+                }
+                
+                // Store the user data
+                currentUser = user
+                
+                // Save user ID and email to UserPreferences
+                userPreferences.saveUserData(id: user.id, email: user.email)
+                
+                // Synchronize favorites with API data
+                userPreferences.syncFavoritesWithAPI(apiFavorites: user.favorites)
+                
+                // Synchronize ratings with API data
+                userPreferences.syncRatingsWithAPI(apiRatings: user.ratings)
+                
+                // Reset loading state
+                isLoadingUser = false
+            } catch {
+                // Just log the error, don't show it to the user
+                logger.error("Failed to fetch user data: \(error.localizedDescription)")
+                
+                // Reset loading state
+                isLoadingUser = false
+            }
+        } else {
+            // User is not authenticated, skip the request
+            logger.notice("User is not authenticated with Clerk. Skipping user data request.")
+            
+            // Clear any existing user data
+            currentUser = nil
+        }
+    }
     
     /// Setup location manager and handle location updates
     func setupLocationManager() {
@@ -80,6 +191,18 @@ class HomeViewModel: ObservableObject {
     func handleMapRegionChange(_ region: MKCoordinateRegion) {
         visibleRegion = region
         
+        // Define a threshold for "super zoomed in" state
+        // Lower values mean more zoomed in (smaller visible area)
+        let superZoomedInThreshold: Double = 0.005 // This value can be adjusted later
+        
+        // Check if we're super zoomed in based on the span
+        let averageSpan = (region.span.latitudeDelta + region.span.longitudeDelta) / 2
+        isSuperZoomedIn = averageSpan < superZoomedInThreshold
+        
+        if isSuperZoomedIn {
+            logger.notice("🔍 Super zoomed in! Average span: \(averageSpan)")
+        }
+        
         // Cancel any existing debounce task
         regionChangeDebounceTask?.cancel()
         
@@ -94,7 +217,18 @@ class HomeViewModel: ObservableObject {
             // Check if we need to fetch new data based on region change
             if shouldFetchForRegion(region) {
                 // Use the center of the current viewport instead of user location
-                fetchNearbyPlaces(at: region.center)
+                let center = region.center
+                
+                // Determine which API endpoint to use based on category selection
+                if !isAllCategoriesMode && !selectedCategoryKeys.isEmpty {
+                    // If specific categories are selected, use the category-specific endpoint
+                    logger.notice("Fetching places by categories due to region change: \(self.selectedCategoryKeys)")
+                    fetchPlacesByCategories(at: center)
+                } else {
+                    // Otherwise use the regular nearby places endpoint
+                    logger.notice("Fetching all nearby places due to region change")
+                    fetchNearbyPlaces(at: center)
+                }
             }
         }
     }
@@ -108,15 +242,24 @@ class HomeViewModel: ObservableObject {
             logger.notice("Cleared existing places for full refresh")
         }
         
-        if let region = visibleRegion {
-            // Use the current viewport center if available
-            fetchNearbyPlaces(at: region.center, useCache: false)
-        } else if let location = locationManager.lastLocation?.coordinate {
-            // Fall back to user location if no viewport is available
-            fetchNearbyPlaces(at: location, useCache: false)
-        } else {
+        // Determine which location to use
+        let location = visibleRegion?.center ?? locationManager.lastLocation?.coordinate
+        
+        guard let location = location else {
             errorMessage = "Unable to determine your location"
             logger.error("Refresh failed: No location available")
+            return
+        }
+        
+        // Determine which API endpoint to use based on category selection
+        if !isAllCategoriesMode && !selectedCategoryKeys.isEmpty {
+            // If specific categories are selected, use the category-specific endpoint
+            logger.notice("Refreshing places by categories: \(self.selectedCategoryKeys)")
+            fetchPlacesByCategories(at: location)
+        } else {
+            // Otherwise use the regular nearby places endpoint
+            logger.notice("Refreshing all nearby places")
+            fetchNearbyPlaces(at: location, useCache: false)
         }
     }
     
@@ -149,6 +292,11 @@ class HomeViewModel: ObservableObject {
     func toggleFavoritesFilter() {
         showFavoritesOnly.toggle()
         logger.notice("Toggled favorites filter: \(self.showFavoritesOnly ? "ON" : "OFF")")
+        
+        if showFavoritesOnly {
+            logger.notice("Showing only \(self.userPreferences.favoritePlaceIds.count) favorited places")
+        }
+        
         applyFilters()
     }
     
@@ -162,6 +310,14 @@ class HomeViewModel: ObservableObject {
             logger.notice("All categories mode enabled, cleared selected categories")
         } else {
             logger.notice("All categories mode disabled")
+            
+            // Log when not in "all" mode
+            if !selectedCategoryKeys.isEmpty {
+                let keys = selectedCategoryKeys.sorted().map { String($0) }.joined(separator: ", ")
+                logger.notice("Not all - Category keys selected: \(keys)")
+            } else {
+                logger.notice("Not all - No specific category keys selected yet")
+            }
         }
         
         logger.notice("Selected keys: \(self.selectedCategoryKeys)")
@@ -182,8 +338,16 @@ class HomeViewModel: ObservableObject {
         if selectedCategoryKeys.isEmpty {
             isAllCategoriesMode = true
             logger.notice("No categories selected, switched to All mode")
+            
+            // Fetch all nearby places when switching to "All" mode
+            if let location = visibleRegion?.center ?? locationManager.lastLocation?.coordinate {
+                fetchNearbyPlaces(at: location)
+            }
         } else {
             isAllCategoriesMode = false
+            
+            // Log when not in "all" mode with the selected key
+            logger.notice("Not all - Category key selected: \(key) \(emoji)")
             
             // Fetch places by categories when we have categories selected
             fetchPlacesByCategories()
@@ -217,10 +381,11 @@ class HomeViewModel: ObservableObject {
             }
         }
         
-        // Apply favorites filter (placeholder - would need to implement favorites functionality)
+        // Apply favorites filter
         if showFavoritesOnly {
-            // This is a placeholder - you would need to implement favorites functionality
-            // filtered = filtered.filter { isFavorite($0) }
+            filtered = filtered.filter { place in
+                return userPreferences.isFavorite(placeId: place.id)
+            }
         }
         
         // Update filtered places
@@ -229,7 +394,7 @@ class HomeViewModel: ObservableObject {
     }
     
     /// Fetch places by selected category keys
-    private func fetchPlacesByCategories() {
+    private func fetchPlacesByCategories(at location: CLLocationCoordinate2D? = nil) {
         // Only proceed if we have categories selected
         guard !selectedCategoryKeys.isEmpty else {
             logger.notice("No categories selected, skipping category-specific fetch")
@@ -239,20 +404,29 @@ class HomeViewModel: ObservableObject {
         // Cancel any existing fetch task
         fetchTask?.cancel()
         
+        // Determine the location to use
+        let fetchLocation = location ?? visibleRegion?.center ?? locationManager.lastLocation?.coordinate
+        
         // Only proceed if we have a location
-        guard let location = visibleRegion?.center ?? locationManager.lastLocation?.coordinate else {
+        guard let fetchLocation = fetchLocation else {
             logger.error("Cannot fetch places by categories: No location available")
             return
         }
         
-        logger.notice("Fetching places by categories: \(self.selectedCategoryKeys)")
+        // Log if we're bypassing cache due to being super zoomed in
+        if isSuperZoomedIn {
+            logger.notice("Super zoomed in mode - adding bypassCache parameter to categories request")
+        }
+        
+        logger.notice("Fetching places by categories: \(self.selectedCategoryKeys) at location: \(fetchLocation.latitude), \(fetchLocation.longitude)")
         
         // Create a new fetch task
         fetchTask = Task {
             do {
                 let fetchedPlaces = try await placesService.fetchPlacesByCategories(
-                    location: location,
-                    categoryKeys: Array(selectedCategoryKeys)
+                    location: fetchLocation,
+                    categoryKeys: Array(selectedCategoryKeys),
+                    bypassCache: isSuperZoomedIn // Add bypassCache parameter
                 )
                 
                 // Check if the task was cancelled
@@ -272,6 +446,24 @@ class HomeViewModel: ObservableObject {
                 logger.error("Error fetching places by categories: \(error.localizedDescription)")
             }
         }
+    }
+    
+    /// Check if a place is favorited by the current user
+    func isPlaceFavorited(placeId: String) -> Bool {
+        guard let user = currentUser else {
+            return false
+        }
+        
+        return user.favorites.contains { $0.placeId == placeId }
+    }
+    
+    /// Get the favorite object for a place if it exists
+    func getFavorite(for placeId: String) -> Favorite? {
+        guard let user = currentUser else {
+            return nil
+        }
+        
+        return user.favorites.first { $0.placeId == placeId }
     }
     
     // MARK: - Private Methods
@@ -317,6 +509,11 @@ class HomeViewModel: ObservableObject {
         // Store the current region as the last fetched region
         lastFetchedRegion = visibleRegion
         
+        // Log if we're bypassing cache due to being super zoomed in
+        if isSuperZoomedIn {
+            logger.notice("Super zoomed in mode - adding bypassCache parameter to request")
+        }
+        
         logger.notice("Fetching nearby places at \(coordinate.latitude), \(coordinate.longitude)")
         
         // Create a new fetch task
@@ -324,7 +521,7 @@ class HomeViewModel: ObservableObject {
             do {
                 let fetchedPlaces = try await placesService.fetchNearbyPlaces(
                     location: coordinate,
-                    useCache: useCache
+                    useCache: useCache && !isSuperZoomedIn // Don't use cache if super zoomed in
                 )
                 
                 // Check if the task was cancelled

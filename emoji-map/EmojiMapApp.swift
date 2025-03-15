@@ -7,9 +7,13 @@
 
 import SwiftUI
 import os.log
+import Clerk
+
 
 @main
 struct EmojiMapApp: App {
+    private var clerk = Clerk.shared
+
     // Logger for debugging
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "emoji_mapApp")
     
@@ -42,13 +46,23 @@ struct EmojiMapApp: App {
                 // Show content based on onboarding status
                 Group {
                     if userPreferences.hasCompletedOnboarding {
-                        Home()
-                            .opacity(contentOpacity)
-                            .animation(.easeIn(duration: 0.5), value: contentOpacity)
+                        if clerk.isLoaded {
+                            Home()
+                                .opacity(contentOpacity)
+                                .animation(.easeIn(duration: 0.5), value: contentOpacity)
+                        } else {
+                            // ProgressView showing up on Splash for some reason?
+                            ProgressView()
+                        }
                     } else {
                         OnboardingView(userPreferences: userPreferences, isFromSettings: false)
                     }
                 }
+                .environment(clerk)
+                 .task {
+                   clerk.configure(publishableKey: "pk_test_Y2F1c2FsLXdhaG9vLTkxLmNsZXJrLmFjY291bnRzLmRldiQ")
+                   try? await clerk.load()
+                 }
                 .animation(.easeInOut, value: userPreferences.hasCompletedOnboarding)
                 .zIndex(0)
                 .onAppear {
