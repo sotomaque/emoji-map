@@ -124,7 +124,7 @@ class UserPreferences: ObservableObject {
                 self.logger.notice("Sending favorite update to API: userId=\(userId), placeId=\(placeId), isFavorite=\(isFavorite)")
                 
                 // Make the request to the favorite endpoint
-                let _: EmptyResponse = try await networkService.post(
+                let _: PlaceActionResponse = try await networkService.post(
                     endpoint: .favorite,
                     body: favoriteRequest,
                     queryItems: nil,
@@ -178,6 +178,52 @@ class UserPreferences: ObservableObject {
         savePlaceRatings()
         
         logger.notice("Set rating \(validRating) for place: \(placeId)")
+        
+        // Update the database in the background if user is logged in
+        if let userId = self.userId {
+            updateRatingInDatabase(userId: userId, placeId: placeId, rating: validRating)
+        } else {
+            logger.notice("User not logged in, skipping database update for rating")
+        }
+    }
+    
+    /// Update rating in the database (non-blocking background request)
+    /// - Parameters:
+    ///   - userId: The user ID
+    ///   - placeId: The place ID
+    ///   - rating: The rating value (0-5)
+    private func updateRatingInDatabase(userId: String, placeId: String, rating: Int) {
+        // Create a background task to update the database
+        Task.detached(priority: .background) {
+            do {
+                // Get the network service from the service container
+                let networkService = ServiceContainer.shared.networkService
+                
+                // Create the request body
+                let ratingRequest = RatingRequest(
+                    userId: userId,
+                    placeId: placeId,
+                    rating: rating
+                )
+                
+                // Log the request
+                self.logger.notice("Sending rating update to API: userId=\(userId), placeId=\(placeId), rating=\(rating)")
+                
+                // Make the request to the rating endpoint
+                let _: PlaceActionResponse = try await networkService.post(
+                    endpoint: .rating,
+                    body: ratingRequest,
+                    queryItems: nil,
+                    authToken: nil
+                )
+                
+                // Log success
+                self.logger.notice("Successfully updated rating in database: placeId=\(placeId), rating=\(rating)")
+            } catch {
+                // Just log the error, don't show it to the user since this is a background operation
+                self.logger.error("Failed to update rating in database: \(error.localizedDescription)")
+            }
+        }
     }
     
     /// Get the user's rating for a place
@@ -249,6 +295,63 @@ class UserPreferences: ObservableObject {
         saveFavoritePlaces()
         
         logger.notice("Synchronized favorites with API - Total favorites: \(self.favoritePlaceIds.count)")
+    }
+    
+    /// Synchronize ratings with API data
+    /// - Parameter apiRatings: Array of Rating objects from the API
+    func syncRatingsWithAPI(apiRatings: [Rating]) {
+        // Log the incoming API ratings
+        logger.notice("Syncing \(apiRatings.count) ratings from API")
+        
+        // Create a dictionary of place IDs to ratings from the API
+        var apiRatingsDict = [String: Int]()
+        for rating in apiRatings {
+            apiRatingsDict[rating.placeId] = rating.rating
+            logger.notice("API Rating: Place ID: \(rating.placeId), Rating: \(rating.rating)")
+        }
+        
+        // Log the current local ratings
+        logger.notice("Current local ratings count: \(self.placeRatings.count)")
+        
+        // Track changes for logging
+        var newRatings = 0
+        var updatedRatings = 0
+        var removedRatings = 0
+        
+        // Track places that have ratings in the API but not locally
+        for (placeId, rating) in apiRatingsDict {
+            if let localRating = placeRatings[placeId] {
+                if localRating != rating {
+                    logger.notice("Updating rating for place \(placeId) from \(localRating) to \(rating)")
+                    updatedRatings += 1
+                }
+            } else {
+                logger.notice("Adding new rating for place \(placeId): \(rating)")
+                newRatings += 1
+            }
+        }
+        
+        // Track places that have ratings locally but not in the API
+        for (placeId, _) in placeRatings {
+            if apiRatingsDict[placeId] == nil {
+                logger.notice("Removing rating for place \(placeId) not in API")
+                removedRatings += 1
+            }
+        }
+        
+        // Update the ratings dictionary with the API data
+        placeRatings = apiRatingsDict
+        
+        // Save to UserDefaults
+        savePlaceRatings()
+        
+        // Log the final state
+        logger.notice("Final ratings after sync: \(self.placeRatings.count)")
+        for (placeId, rating) in self.placeRatings {
+            logger.notice("  Synced Rating: Place ID: \(placeId), Rating: \(rating)")
+        }
+        
+        logger.notice("Synchronized ratings with API - Added: \(newRatings), Updated: \(updatedRatings), Removed: \(removedRatings), Total: \(self.placeRatings.count)")
     }
     
     // MARK: - Data Reset

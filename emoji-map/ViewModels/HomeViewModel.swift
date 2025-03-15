@@ -138,6 +138,12 @@ class HomeViewModel: ObservableObject {
                     logger.notice("    Favorite \(index + 1): Place ID: \(favorite.placeId)")
                 }
                 
+                // Log ratings information
+                logger.notice("  Ratings: \(user.ratings.count)")
+                for (index, rating) in user.ratings.enumerated() {
+                    logger.notice("    Rating \(index + 1): Place ID: \(rating.placeId), Rating: \(rating.rating)")
+                }
+                
                 // Store the user data
                 currentUser = user
                 
@@ -146,6 +152,9 @@ class HomeViewModel: ObservableObject {
                 
                 // Synchronize favorites with API data
                 userPreferences.syncFavoritesWithAPI(apiFavorites: user.favorites)
+                
+                // Synchronize ratings with API data
+                userPreferences.syncRatingsWithAPI(apiRatings: user.ratings)
                 
                 // Reset loading state
                 isLoadingUser = false
