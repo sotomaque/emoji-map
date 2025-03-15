@@ -465,6 +465,8 @@ struct SettingsSheet: View {
                         // Use the standard authenticateWithIdToken method
                         try await SignIn.authenticateWithIdToken(provider: .apple, idToken: idToken)
                         logger.notice("User signed in with Apple successfully")
+                        // Fetch user data which will sync favorites with API
+                        await viewModel.fetchUserData()
                         isAppleSignInLoading = false
                     } catch let clerkError {
                         logger.error("Clerk authentication error: \(clerkError.localizedDescription)")

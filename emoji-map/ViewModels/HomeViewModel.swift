@@ -181,6 +181,16 @@ class HomeViewModel: ObservableObject {
     func handleMapRegionChange(_ region: MKCoordinateRegion) {
         visibleRegion = region
         
+        // Define a threshold for "super zoomed in" state
+        // Lower values mean more zoomed in (smaller visible area)
+        let superZoomedInThreshold: Double = 0.005 // This value can be adjusted later
+        
+        // Check if we're super zoomed in based on the span
+        let averageSpan = (region.span.latitudeDelta + region.span.longitudeDelta) / 2
+        if averageSpan < superZoomedInThreshold {
+            logger.notice("🔍 Super zoomed in! Average span: \(averageSpan)")
+        }
+        
         // Cancel any existing debounce task
         regionChangeDebounceTask?.cancel()
         
@@ -195,7 +205,18 @@ class HomeViewModel: ObservableObject {
             // Check if we need to fetch new data based on region change
             if shouldFetchForRegion(region) {
                 // Use the center of the current viewport instead of user location
-                fetchNearbyPlaces(at: region.center)
+                let center = region.center
+                
+                // Determine which API endpoint to use based on category selection
+                if !isAllCategoriesMode && !selectedCategoryKeys.isEmpty {
+                    // If specific categories are selected, use the category-specific endpoint
+                    logger.notice("Fetching places by categories due to region change: \(self.selectedCategoryKeys)")
+                    fetchPlacesByCategories(at: center)
+                } else {
+                    // Otherwise use the regular nearby places endpoint
+                    logger.notice("Fetching all nearby places due to region change")
+                    fetchNearbyPlaces(at: center)
+                }
             }
         }
     }
@@ -209,15 +230,24 @@ class HomeViewModel: ObservableObject {
             logger.notice("Cleared existing places for full refresh")
         }
         
-        if let region = visibleRegion {
-            // Use the current viewport center if available
-            fetchNearbyPlaces(at: region.center, useCache: false)
-        } else if let location = locationManager.lastLocation?.coordinate {
-            // Fall back to user location if no viewport is available
-            fetchNearbyPlaces(at: location, useCache: false)
-        } else {
+        // Determine which location to use
+        let location = visibleRegion?.center ?? locationManager.lastLocation?.coordinate
+        
+        guard let location = location else {
             errorMessage = "Unable to determine your location"
             logger.error("Refresh failed: No location available")
+            return
+        }
+        
+        // Determine which API endpoint to use based on category selection
+        if !isAllCategoriesMode && !selectedCategoryKeys.isEmpty {
+            // If specific categories are selected, use the category-specific endpoint
+            logger.notice("Refreshing places by categories: \(self.selectedCategoryKeys)")
+            fetchPlacesByCategories(at: location)
+        } else {
+            // Otherwise use the regular nearby places endpoint
+            logger.notice("Refreshing all nearby places")
+            fetchNearbyPlaces(at: location, useCache: false)
         }
     }
     
@@ -268,6 +298,14 @@ class HomeViewModel: ObservableObject {
             logger.notice("All categories mode enabled, cleared selected categories")
         } else {
             logger.notice("All categories mode disabled")
+            
+            // Log when not in "all" mode
+            if !selectedCategoryKeys.isEmpty {
+                let keys = selectedCategoryKeys.sorted().map { String($0) }.joined(separator: ", ")
+                logger.notice("Not all - Category keys selected: \(keys)")
+            } else {
+                logger.notice("Not all - No specific category keys selected yet")
+            }
         }
         
         logger.notice("Selected keys: \(self.selectedCategoryKeys)")
@@ -288,8 +326,16 @@ class HomeViewModel: ObservableObject {
         if selectedCategoryKeys.isEmpty {
             isAllCategoriesMode = true
             logger.notice("No categories selected, switched to All mode")
+            
+            // Fetch all nearby places when switching to "All" mode
+            if let location = visibleRegion?.center ?? locationManager.lastLocation?.coordinate {
+                fetchNearbyPlaces(at: location)
+            }
         } else {
             isAllCategoriesMode = false
+            
+            // Log when not in "all" mode with the selected key
+            logger.notice("Not all - Category key selected: \(key) \(emoji)")
             
             // Fetch places by categories when we have categories selected
             fetchPlacesByCategories()
@@ -336,7 +382,7 @@ class HomeViewModel: ObservableObject {
     }
     
     /// Fetch places by selected category keys
-    private func fetchPlacesByCategories() {
+    private func fetchPlacesByCategories(at location: CLLocationCoordinate2D? = nil) {
         // Only proceed if we have categories selected
         guard !selectedCategoryKeys.isEmpty else {
             logger.notice("No categories selected, skipping category-specific fetch")
@@ -346,19 +392,22 @@ class HomeViewModel: ObservableObject {
         // Cancel any existing fetch task
         fetchTask?.cancel()
         
+        // Determine the location to use
+        let fetchLocation = location ?? visibleRegion?.center ?? locationManager.lastLocation?.coordinate
+        
         // Only proceed if we have a location
-        guard let location = visibleRegion?.center ?? locationManager.lastLocation?.coordinate else {
+        guard let fetchLocation = fetchLocation else {
             logger.error("Cannot fetch places by categories: No location available")
             return
         }
         
-        logger.notice("Fetching places by categories: \(self.selectedCategoryKeys)")
+        logger.notice("Fetching places by categories: \(self.selectedCategoryKeys) at location: \(fetchLocation.latitude), \(fetchLocation.longitude)")
         
         // Create a new fetch task
         fetchTask = Task {
             do {
                 let fetchedPlaces = try await placesService.fetchPlacesByCategories(
-                    location: location,
+                    location: fetchLocation,
                     categoryKeys: Array(selectedCategoryKeys)
                 )
                 
