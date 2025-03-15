@@ -544,7 +544,7 @@ private class PreviewMockPlacesService: PlacesServiceProtocol {
         return Just([]).setFailureType(to: Error.self).eraseToAnyPublisher()
     }
     
-    @MainActor func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int]) async throws -> [Place] {
+    @MainActor func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int], bypassCache: Bool = false) async throws -> [Place] {
         return []
     }
     

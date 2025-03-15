@@ -43,7 +43,7 @@ enum PlacesServiceError: Error, LocalizedError {
 protocol PlacesServiceProtocol {
     @MainActor func fetchNearbyPlaces(location: CLLocationCoordinate2D, useCache: Bool) async throws -> [Place]
     @MainActor func fetchNearbyPlacesPublisher(location: CLLocationCoordinate2D, useCache: Bool) -> AnyPublisher<[Place], Error>
-    @MainActor func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int]) async throws -> [Place]
+    @MainActor func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int], bypassCache: Bool) async throws -> [Place]
     @MainActor func clearCache()
 }
 
@@ -93,7 +93,14 @@ class PlacesService: PlacesServiceProtocol {
         
         // Otherwise fetch from the network
         do {
-            let queryItems = [URLQueryItem(name: "location", value: "\(location.latitude),\(location.longitude)")]
+            // Create base query items
+            var queryItems = [URLQueryItem(name: "location", value: "\(location.latitude),\(location.longitude)")]
+            
+            // Add bypassCache parameter if we're explicitly not using cache
+            if !useCache {
+                queryItems.append(URLQueryItem(name: "bypassCache", value: "true"))
+                logger.notice("Adding bypassCache=true to request")
+            }
             
             logger.notice("Fetching nearby places for location: \(location.latitude), \(location.longitude)")
             
@@ -118,18 +125,21 @@ class PlacesService: PlacesServiceProtocol {
     /// - Parameters:
     ///   - location: The center of the current viewport
     ///   - categoryKeys: Array of category keys to filter by
+    ///   - bypassCache: Whether to bypass the cache and add bypassCache parameter to the request
     /// - Returns: An array of places matching the specified categories
     @MainActor
     func fetchPlacesByCategories(
         location: CLLocationCoordinate2D,
-        categoryKeys: [Int]
+        categoryKeys: [Int],
+        bypassCache: Bool = false
     ) async throws -> [Place] {
         // Create a cache key based on location and categories
         let categoriesString = categoryKeys.sorted().map { String($0) }.joined(separator: "-")
         let cacheKey = "\(createCacheKey(location: location))-categories-\(categoriesString)"
         
         // Check if we have cached data and it's still valid
-        if let cachedData = placesCache[cacheKey],
+        if !bypassCache,
+           let cachedData = placesCache[cacheKey],
            Date().timeIntervalSince(cachedData.timestamp) < cacheExpirationTime {
             logger.notice("Using cached category-specific places data for location: \(location.latitude), \(location.longitude) and categories: \(categoryKeys)")
             return cachedData.places
@@ -142,6 +152,12 @@ class PlacesService: PlacesServiceProtocol {
             
             // Add location parameter
             queryItems.append(URLQueryItem(name: "location", value: "\(location.latitude),\(location.longitude)"))
+            
+            // Add bypassCache parameter if requested
+            if bypassCache {
+                queryItems.append(URLQueryItem(name: "bypassCache", value: "true"))
+                logger.notice("Adding bypassCache=true to categories request")
+            }
             
             logger.notice("Fetching places for categories \(categoryKeys) at location: \(location.latitude), \(location.longitude)")
             
@@ -185,7 +201,13 @@ class PlacesService: PlacesServiceProtocol {
         }
         
         // Otherwise fetch from the network
-        let queryItems = [URLQueryItem(name: "location", value: "\(location.latitude),\(location.longitude)")]
+        var queryItems = [URLQueryItem(name: "location", value: "\(location.latitude),\(location.longitude)")]
+        
+        // Add bypassCache parameter if we're explicitly not using cache
+        if !useCache {
+            queryItems.append(URLQueryItem(name: "bypassCache", value: "true"))
+            logger.notice("Adding bypassCache=true to publisher request")
+        }
         
         logger.notice("Fetching nearby places for location: \(location.latitude), \(location.longitude)")
         

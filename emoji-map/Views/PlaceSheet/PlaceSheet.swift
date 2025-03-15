@@ -264,6 +264,27 @@ struct PlaceDetailView: View {
                                             Image(systemName: star <= review.rating ? "star.fill" : "star")
                                                 .font(.caption)
                                                 .foregroundColor(.yellow)
+                                            .onTapGesture {
+                                                // Provide haptic feedback
+                                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                                generator.prepare()
+                                                
+                                                // Check if the user is clicking the same rating
+                                                if userRating == star {
+                                                    // Reset the rating to 0 (null)
+                                                    userRating = 0
+                                                    userPreferences.setRating(placeId: placeId, rating: 0)
+                                                    logger.notice("Rating reset to 0 for place ID: \(placeId)")
+                                                } else {
+                                                    // Update to the new rating
+                                                    userRating = star
+                                                    userPreferences.setRating(placeId: placeId, rating: star)
+                                                    logger.notice("Rating updated to \(star) for place ID: \(placeId)")
+                                                }
+                                                
+                                                // Trigger haptic feedback
+                                                generator.impactOccurred()
+                                            }
                                         }
                                     }
                                     
@@ -566,17 +587,21 @@ struct UserRatingView: View {
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
                                 generator.prepare()
                                 
-                                // Update rating
-                                userRating = star
-                                
-                                // Save rating to UserPreferences
-                                userPreferences.setRating(placeId: placeId, rating: star)
+                                // Check if the user is clicking the same rating
+                                if userRating == star {
+                                    // Reset the rating to 0 (null)
+                                    userRating = 0
+                                    userPreferences.setRating(placeId: placeId, rating: 0)
+                                    logger.notice("Rating reset to 0 for place ID: \(placeId)")
+                                } else {
+                                    // Update to the new rating
+                                    userRating = star
+                                    userPreferences.setRating(placeId: placeId, rating: star)
+                                    logger.notice("Rating updated to \(star) for place ID: \(placeId)")
+                                }
                                 
                                 // Trigger haptic feedback
                                 generator.impactOccurred()
-                                
-                                // Log the rating
-                                logger.notice("Rating clicked: \(star) for place ID: \(placeId)")
                             }
                     }
                 }

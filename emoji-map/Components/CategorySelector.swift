@@ -271,9 +271,24 @@ struct CategorySelector: View {
     // MARK: - Actions
     
     private func recommendRandomPlace() {
-        // Stub for random place recommendation
-        logger.notice("Recommending a random place")
-        logger.notice("Current selected keys: \(viewModel.selectedCategoryKeys)")
+        // Get the filtered places from the view model
+        let places = viewModel.filteredPlaces
+        
+        // Check if we have any places to recommend
+        guard !places.isEmpty else {
+            logger.notice("Cannot recommend a random place: No places available")
+            return
+        }
+        
+        // Select a random place from the filtered places
+        if let randomPlace = places.randomElement() {
+            logger.notice("Recommending a random place: \(randomPlace.id) (\(randomPlace.emoji))")
+            
+            // Select the place and show its detail sheet
+            viewModel.selectPlace(randomPlace)
+        } else {
+            logger.notice("Failed to select a random place")
+        }
     }
 }
 
@@ -302,7 +317,7 @@ private class MockPlacesService: PlacesServiceProtocol {
         return Just([]).setFailureType(to: Error.self).eraseToAnyPublisher()
     }
     
-    @MainActor func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int]) async throws -> [Place] {
+    @MainActor func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int], bypassCache: Bool = false) async throws -> [Place] {
         return []
     }
     

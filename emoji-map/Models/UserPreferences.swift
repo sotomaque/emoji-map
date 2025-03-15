@@ -71,14 +71,18 @@ class UserPreferences: ObservableObject {
     /// - Parameter placeId: The ID of the place to toggle
     /// - Returns: The new favorite status (true if favorited, false if unfavorited)
     func toggleFavorite(placeId: String) -> Bool {
+        let isFavorite: Bool
+        
         if favoritePlaceIds.contains(placeId) {
             // Remove from favorites
             favoritePlaceIds.remove(placeId)
             logger.notice("Removed place from favorites: \(placeId)")
+            isFavorite = false
         } else {
             // Add to favorites
             favoritePlaceIds.insert(placeId)
             logger.notice("Added place to favorites: \(placeId)")
+            isFavorite = true
         }
         
         // Save to UserDefaults
@@ -87,12 +91,53 @@ class UserPreferences: ObservableObject {
         // Log the full list of favorites
         logger.notice("Current favorites list (\(self.favoritePlaceIds.count) items): \(Array(self.favoritePlaceIds).joined(separator: ", "))")
         
-        // Note: This change should be synced with the API
-        // This is currently handled in a separate API call that would be implemented elsewhere
-        logger.notice("Note: This favorite change should be synced with the API")
+        // Update the database in the background if user is logged in
+        if let userId = self.userId {
+            updateFavoriteInDatabase(userId: userId, placeId: placeId, isFavorite: isFavorite)
+        } else {
+            logger.notice("User not logged in, skipping database update for favorite")
+        }
         
-        // Return the new status
-        return favoritePlaceIds.contains(placeId)
+        return isFavorite
+    }
+    
+    /// Update favorite status in the database (non-blocking background request)
+    /// - Parameters:
+    ///   - userId: The user ID
+    ///   - placeId: The place ID
+    ///   - isFavorite: Whether the place is favorited
+    private func updateFavoriteInDatabase(userId: String, placeId: String, isFavorite: Bool) {
+        // Create a background task to update the database
+        Task.detached(priority: .background) {
+            do {
+                // Get the network service from the service container
+                let networkService = ServiceContainer.shared.networkService
+                
+                // Create the request body
+                let favoriteRequest = FavoriteRequest(
+                    userId: userId,
+                    placeId: placeId,
+                    isFavorite: isFavorite
+                )
+                
+                // Log the request
+                self.logger.notice("Sending favorite update to API: userId=\(userId), placeId=\(placeId), isFavorite=\(isFavorite)")
+                
+                // Make the request to the favorite endpoint
+                let _: EmptyResponse = try await networkService.post(
+                    endpoint: .favorite,
+                    body: favoriteRequest,
+                    queryItems: nil,
+                    authToken: nil
+                )
+                
+                // Log success
+                self.logger.notice("Successfully updated favorite in database: placeId=\(placeId), isFavorite=\(isFavorite)")
+            } catch {
+                // Just log the error, don't show it to the user since this is a background operation
+                self.logger.error("Failed to update favorite in database: \(error.localizedDescription)")
+            }
+        }
     }
     
     /// Check if a place is favorited

@@ -209,4 +209,17 @@ struct EmptyResponse: Codable {
     let message: String?
     
     static let empty = EmptyResponse(success: true, message: nil)
+}
+
+/// Model for favorite request to the API
+struct FavoriteRequest: Codable {
+    let userId: String
+    let placeId: String // placeId
+    let isFavorite: Bool
+    
+    enum CodingKeys: String, CodingKey {
+        case userId
+        case placeId
+        case isFavorite
+    }
 } 

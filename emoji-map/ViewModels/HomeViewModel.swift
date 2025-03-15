@@ -38,6 +38,7 @@ class HomeViewModel: ObservableObject {
     private var lastFetchedRegion: MKCoordinateRegion?
     private var regionChangeDebounceTask: Task<Void, Never>?
     private var fetchTask: Task<Void, Never>?
+    private var isSuperZoomedIn: Bool = false // Track super zoomed in state
     
     // Location manager
     let locationManager = LocationManager()
@@ -187,7 +188,9 @@ class HomeViewModel: ObservableObject {
         
         // Check if we're super zoomed in based on the span
         let averageSpan = (region.span.latitudeDelta + region.span.longitudeDelta) / 2
-        if averageSpan < superZoomedInThreshold {
+        isSuperZoomedIn = averageSpan < superZoomedInThreshold
+        
+        if isSuperZoomedIn {
             logger.notice("🔍 Super zoomed in! Average span: \(averageSpan)")
         }
         
@@ -401,6 +404,11 @@ class HomeViewModel: ObservableObject {
             return
         }
         
+        // Log if we're bypassing cache due to being super zoomed in
+        if isSuperZoomedIn {
+            logger.notice("Super zoomed in mode - adding bypassCache parameter to categories request")
+        }
+        
         logger.notice("Fetching places by categories: \(self.selectedCategoryKeys) at location: \(fetchLocation.latitude), \(fetchLocation.longitude)")
         
         // Create a new fetch task
@@ -408,7 +416,8 @@ class HomeViewModel: ObservableObject {
             do {
                 let fetchedPlaces = try await placesService.fetchPlacesByCategories(
                     location: fetchLocation,
-                    categoryKeys: Array(selectedCategoryKeys)
+                    categoryKeys: Array(selectedCategoryKeys),
+                    bypassCache: isSuperZoomedIn // Add bypassCache parameter
                 )
                 
                 // Check if the task was cancelled
@@ -491,6 +500,11 @@ class HomeViewModel: ObservableObject {
         // Store the current region as the last fetched region
         lastFetchedRegion = visibleRegion
         
+        // Log if we're bypassing cache due to being super zoomed in
+        if isSuperZoomedIn {
+            logger.notice("Super zoomed in mode - adding bypassCache parameter to request")
+        }
+        
         logger.notice("Fetching nearby places at \(coordinate.latitude), \(coordinate.longitude)")
         
         // Create a new fetch task
@@ -498,7 +512,7 @@ class HomeViewModel: ObservableObject {
             do {
                 let fetchedPlaces = try await placesService.fetchNearbyPlaces(
                     location: coordinate,
-                    useCache: useCache
+                    useCache: useCache && !isSuperZoomedIn // Don't use cache if super zoomed in
                 )
                 
                 // Check if the task was cancelled
