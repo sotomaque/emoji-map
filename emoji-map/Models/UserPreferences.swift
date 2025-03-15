@@ -10,10 +10,16 @@ class UserPreferences: ObservableObject {
     @Published var favoritePlaceIds: Set<String> = []
     @Published var placeRatings: [String: Int] = [:]
     
+    // User data from API
+    @Published var userId: String?
+    @Published var userEmail: String?
+    
     private let onboardingKey = "has_completed_onboarding"
     private let hasLaunchedBeforeKey = "has_launched_before"
     private let favoritePlacesKey = "favorite_place_ids"
     private let placeRatingsKey = "place_ratings"
+    private let userIdKey = "user_id"
+    private let userEmailKey = "user_email"
     
     let userDefaults: UserDefaults
     
@@ -26,6 +32,7 @@ class UserPreferences: ObservableObject {
         loadLaunchStatus()
         loadFavoritePlaces()
         loadPlaceRatings()
+        loadUserData()
         
         // Mark that the app has been launched
         if !hasLaunchedBefore {
@@ -79,6 +86,10 @@ class UserPreferences: ObservableObject {
         
         // Log the full list of favorites
         logger.notice("Current favorites list (\(self.favoritePlaceIds.count) items): \(Array(self.favoritePlaceIds).joined(separator: ", "))")
+        
+        // Note: This change should be synced with the API
+        // This is currently handled in a separate API call that would be implemented elsewhere
+        logger.notice("Note: This favorite change should be synced with the API")
         
         // Return the new status
         return favoritePlaceIds.contains(placeId)
@@ -145,6 +156,56 @@ class UserPreferences: ObservableObject {
         }
     }
     
+    // MARK: - User Data
+    
+    /// Load user data from UserDefaults
+    private func loadUserData() {
+        userId = userDefaults.string(forKey: userIdKey)
+        userEmail = userDefaults.string(forKey: userEmailKey)
+    }
+    
+    /// Save user ID and email to UserDefaults
+    /// - Parameters:
+    ///   - id: The user ID
+    ///   - email: The user email
+    func saveUserData(id: String, email: String) {
+        userId = id
+        userEmail = email
+        
+        userDefaults.set(id, forKey: userIdKey)
+        userDefaults.set(email, forKey: userEmailKey)
+        userDefaults.synchronize()
+        
+        logger.notice("Saved user data - ID: \(id), Email: \(email)")
+    }
+    
+    /// Synchronize favorites with API data
+    /// - Parameter apiFavorites: Array of Favorite objects from the API
+    func syncFavoritesWithAPI(apiFavorites: [Favorite]) {
+        // Create a set of place IDs from the API favorites
+        let apiPlaceIds = Set(apiFavorites.map { $0.placeId })
+        
+        // Log the differences
+        let newFavorites = apiPlaceIds.subtracting(favoritePlaceIds)
+        let removedFavorites = favoritePlaceIds.subtracting(apiPlaceIds)
+        
+        if !newFavorites.isEmpty {
+            logger.notice("Adding \(newFavorites.count) new favorites from API: \(Array(newFavorites).joined(separator: ", "))")
+        }
+        
+        if !removedFavorites.isEmpty {
+            logger.notice("Removing \(removedFavorites.count) favorites not in API: \(Array(removedFavorites).joined(separator: ", "))")
+        }
+        
+        // Update the favorites set with the API data
+        favoritePlaceIds = apiPlaceIds
+        
+        // Save to UserDefaults
+        saveFavoritePlaces()
+        
+        logger.notice("Synchronized favorites with API - Total favorites: \(self.favoritePlaceIds.count)")
+    }
+    
     // MARK: - Data Reset
     
     func resetAllData() {
@@ -159,6 +220,8 @@ class UserPreferences: ObservableObject {
         userDefaults.removeObject(forKey: hasLaunchedBeforeKey)
         userDefaults.removeObject(forKey: favoritePlacesKey)
         userDefaults.removeObject(forKey: placeRatingsKey)
+        userDefaults.removeObject(forKey: userIdKey)
+        userDefaults.removeObject(forKey: userEmailKey)
         userDefaults.synchronize()
         
         // Notify observers

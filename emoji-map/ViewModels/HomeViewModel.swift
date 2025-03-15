@@ -10,6 +10,7 @@ import CoreLocation
 import MapKit
 import Combine
 import os.log
+import Clerk
 
 @MainActor
 class HomeViewModel: ObservableObject {
@@ -22,6 +23,10 @@ class HomeViewModel: ObservableObject {
     @Published var isSettingsSheetPresented = false
     @Published var selectedPlace: Place?
     @Published var isPlaceDetailSheetPresented = false
+    
+    // User data
+    @Published var currentUser: User?
+    @Published var isLoadingUser = false
     
     // Category selection state
     @Published var selectedCategoryKeys: Set<Int> = []
@@ -55,6 +60,11 @@ class HomeViewModel: ObservableObject {
         logger.notice("HomeViewModel initialized")
         
         setupLocationManager()
+        
+        // Fetch user data in the background
+        Task {
+            await fetchUserData()
+        }
     }
     
     deinit {
@@ -64,6 +74,95 @@ class HomeViewModel: ObservableObject {
     }
     
     // MARK: - Public Methods
+    
+    /// Fetch user data from the API
+    func fetchUserData() async {
+        logger.notice("Checking for authenticated user")
+        
+        // Get Clerk instance
+        let clerk = Clerk.shared
+        
+        // Make sure Clerk is fully loaded
+        if !clerk.isLoaded {
+            logger.notice("Clerk is not fully loaded yet. Skipping user data request.")
+            return
+        }
+        
+        // Check if user is authenticated
+        if let clerkUser = clerk.user {
+            logger.notice("User is authenticated with Clerk. User ID: \(clerkUser.id)")
+            
+            // Set loading state
+            isLoadingUser = true
+            
+            do {
+                // Get the network service from the service container
+                let networkService = ServiceContainer.shared.networkService
+                
+                // Create query items with the user ID
+                let queryItems = [URLQueryItem(name: "userId", value: clerkUser.id)]
+                
+                logger.notice("Making request to /api/user with userId: \(clerkUser.id)")
+                
+                // Make the request to the user endpoint with the user ID
+                let userResponse: UserResponse = try await networkService.fetch(
+                    endpoint: .user,
+                    queryItems: queryItems,
+                    authToken: nil
+                )
+                
+                // Log the raw response structure
+                logger.notice("User response received with user ID: \(userResponse.user.id)")
+                
+                // Convert the response to a User model
+                let user = userResponse.toUser
+                
+                // Log the user data
+                logger.notice("User data fetched successfully:")
+                logger.notice("  ID: \(user.id)")
+                logger.notice("  Email: \(user.email)")
+                logger.notice("  Username: \(user.username ?? "N/A")")
+                logger.notice("  Name: \(user.firstName ?? "") \(user.lastName ?? "")")
+                
+                if let createdAt = user.createdAt {
+                    let formatter = DateFormatter()
+                    formatter.dateStyle = .medium
+                    formatter.timeStyle = .short
+                    logger.notice("  Created: \(formatter.string(from: createdAt))")
+                }
+                
+                // Log favorites information
+                logger.notice("  Favorites: \(user.favorites.count)")
+                for (index, favorite) in user.favorites.enumerated() {
+                    logger.notice("    Favorite \(index + 1): Place ID: \(favorite.placeId)")
+                }
+                
+                // Store the user data
+                currentUser = user
+                
+                // Save user ID and email to UserPreferences
+                userPreferences.saveUserData(id: user.id, email: user.email)
+                
+                // Synchronize favorites with API data
+                userPreferences.syncFavoritesWithAPI(apiFavorites: user.favorites)
+                
+                // Reset loading state
+                isLoadingUser = false
+            } catch {
+                // Just log the error, don't show it to the user
+                logger.error("Failed to fetch user data: \(error.localizedDescription)")
+                
+                // Reset loading state
+                isLoadingUser = false
+            }
+        } else {
+            // User is not authenticated, skip the request
+            logger.notice("User is not authenticated with Clerk. Skipping user data request.")
+            
+            // Clear any existing user data
+            currentUser = nil
+        }
+    }
     
     /// Setup location manager and handle location updates
     func setupLocationManager() {
@@ -280,6 +379,24 @@ class HomeViewModel: ObservableObject {
                 logger.error("Error fetching places by categories: \(error.localizedDescription)")
             }
         }
+    }
+    
+    /// Check if a place is favorited by the current user
+    func isPlaceFavorited(placeId: String) -> Bool {
+        guard let user = currentUser else {
+            return false
+        }
+        
+        return user.favorites.contains { $0.placeId == placeId }
+    }
+    
+    /// Get the favorite object for a place if it exists
+    func getFavorite(for placeId: String) -> Favorite? {
+        guard let user = currentUser else {
+            return nil
+        }
+        
+        return user.favorites.first { $0.placeId == placeId }
     }
     
     // MARK: - Private Methods

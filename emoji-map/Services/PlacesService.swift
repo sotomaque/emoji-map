@@ -99,7 +99,8 @@ class PlacesService: PlacesServiceProtocol {
             
             let response: PlacesResponse = try await networkService.fetch(
                 endpoint: .nearbyPlaces,
-                queryItems: queryItems
+                queryItems: queryItems,
+                authToken: nil
             )
             
             // Cache the results
@@ -146,7 +147,8 @@ class PlacesService: PlacesServiceProtocol {
             
             let response: PlacesResponse = try await networkService.fetch(
                 endpoint: .nearbyPlaces,
-                queryItems: queryItems
+                queryItems: queryItems,
+                authToken: nil
             )
             
             // Cache the results
@@ -187,7 +189,7 @@ class PlacesService: PlacesServiceProtocol {
         
         logger.notice("Fetching nearby places for location: \(location.latitude), \(location.longitude)")
         
-        return networkService.fetchWithPublisher(endpoint: .nearbyPlaces, queryItems: queryItems)
+        return networkService.fetchWithPublisher(endpoint: .nearbyPlaces, queryItems: queryItems, authToken: nil)
             .map { (response: PlacesResponse) -> [Place] in
                 return response.data
             }

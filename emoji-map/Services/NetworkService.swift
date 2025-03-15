@@ -96,6 +96,7 @@ enum APIEndpoint {
     case nearbyPlaces
     case placeDetails
     case placePhotos
+    case user
     
     var path: String {
         switch self {
@@ -105,6 +106,8 @@ enum APIEndpoint {
             return "api/places/details"
         case .placePhotos:
             return "api/places/photos"
+        case .user:
+            return "api/user"
         }
     }
 }
@@ -338,11 +341,11 @@ struct RequestBuilder {
 
 /// Protocol defining the network service capabilities
 protocol NetworkServiceProtocol {
-    func fetch<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]?) async throws -> T
-    func fetchWithPublisher<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]?) -> AnyPublisher<T, Error>
-    func post<T: Decodable, U: Encodable>(endpoint: APIEndpoint, body: U, queryItems: [URLQueryItem]?) async throws -> T
-    func put<T: Decodable, U: Encodable>(endpoint: APIEndpoint, body: U, queryItems: [URLQueryItem]?) async throws -> T
-    func delete<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]?) async throws -> T
+    func fetch<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]?, authToken: String?) async throws -> T
+    func fetchWithPublisher<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]?, authToken: String?) -> AnyPublisher<T, Error>
+    func post<T: Decodable, U: Encodable>(endpoint: APIEndpoint, body: U, queryItems: [URLQueryItem]?, authToken: String?) async throws -> T
+    func put<T: Decodable, U: Encodable>(endpoint: APIEndpoint, body: U, queryItems: [URLQueryItem]?, authToken: String?) async throws -> T
+    func delete<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]?, authToken: String?) async throws -> T
 }
 
 // MARK: - Network Service Implementation
@@ -366,9 +369,10 @@ class NetworkService: NetworkServiceProtocol {
     /// - Parameters:
     ///   - endpoint: The API endpoint to fetch from
     ///   - queryItems: Optional query parameters
+    ///   - authToken: Optional authentication token
     /// - Returns: Decoded response of type T
-    func fetch<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]? = nil) async throws -> T {
-        let request = try createRequest(for: endpoint, method: .get, queryItems: queryItems)
+    func fetch<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]? = nil, authToken: String? = nil) async throws -> T {
+        let request = try createRequest(for: endpoint, method: .get, queryItems: queryItems, authToken: authToken)
         return try await httpClient.sendRequest(request)
     }
     
@@ -377,9 +381,10 @@ class NetworkService: NetworkServiceProtocol {
     ///   - endpoint: The API endpoint to post to
     ///   - body: The request body
     ///   - queryItems: Optional query parameters
+    ///   - authToken: Optional authentication token
     /// - Returns: Decoded response of type T
-    func post<T: Decodable, U: Encodable>(endpoint: APIEndpoint, body: U, queryItems: [URLQueryItem]? = nil) async throws -> T {
-        let request: URLRequest = try createRequest(for: endpoint, method: .post, body: body, queryItems: queryItems)
+    func post<T: Decodable, U: Encodable>(endpoint: APIEndpoint, body: U, queryItems: [URLQueryItem]? = nil, authToken: String? = nil) async throws -> T {
+        let request: URLRequest = try createRequest(for: endpoint, method: .post, body: body, queryItems: queryItems, authToken: authToken)
         return try await httpClient.sendRequest(request)
     }
     
@@ -388,9 +393,10 @@ class NetworkService: NetworkServiceProtocol {
     ///   - endpoint: The API endpoint to put to
     ///   - body: The request body
     ///   - queryItems: Optional query parameters
+    ///   - authToken: Optional authentication token
     /// - Returns: Decoded response of type T
-    func put<T: Decodable, U: Encodable>(endpoint: APIEndpoint, body: U, queryItems: [URLQueryItem]? = nil) async throws -> T {
-        let request: URLRequest = try createRequest(for: endpoint, method: .put, body: body, queryItems: queryItems)
+    func put<T: Decodable, U: Encodable>(endpoint: APIEndpoint, body: U, queryItems: [URLQueryItem]? = nil, authToken: String? = nil) async throws -> T {
+        let request: URLRequest = try createRequest(for: endpoint, method: .put, body: body, queryItems: queryItems, authToken: authToken)
         return try await httpClient.sendRequest(request)
     }
     
@@ -398,9 +404,10 @@ class NetworkService: NetworkServiceProtocol {
     /// - Parameters:
     ///   - endpoint: The API endpoint to delete from
     ///   - queryItems: Optional query parameters
+    ///   - authToken: Optional authentication token
     /// - Returns: Decoded response of type T
-    func delete<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]? = nil) async throws -> T {
-        let request = try createRequest(for: endpoint, method: .delete, queryItems: queryItems)
+    func delete<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]? = nil, authToken: String? = nil) async throws -> T {
+        let request = try createRequest(for: endpoint, method: .delete, queryItems: queryItems, authToken: authToken)
         return try await httpClient.sendRequest(request)
     }
     
@@ -408,10 +415,11 @@ class NetworkService: NetworkServiceProtocol {
     /// - Parameters:
     ///   - endpoint: The API endpoint to fetch from
     ///   - queryItems: Optional query parameters
+    ///   - authToken: Optional authentication token
     /// - Returns: Publisher that emits decoded response of type T or error
-    func fetchWithPublisher<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]? = nil) -> AnyPublisher<T, Error> {
+    func fetchWithPublisher<T: Decodable>(endpoint: APIEndpoint, queryItems: [URLQueryItem]? = nil, authToken: String? = nil) -> AnyPublisher<T, Error> {
         do {
-            let request = try createRequest(for: endpoint, method: .get, queryItems: queryItems)
+            let request = try createRequest(for: endpoint, method: .get, queryItems: queryItems, authToken: authToken)
             
             return URLSession.shared.dataTaskPublisher(for: request)
                 .subscribe(on: DispatchQueue.global(qos: .userInitiated))
@@ -471,18 +479,25 @@ class NetworkService: NetworkServiceProtocol {
     ///   - method: The HTTP method
     ///   - body: Optional request body
     ///   - queryItems: Optional query parameters
+    ///   - authToken: Optional authentication token
     /// - Returns: URLRequest
     private func createRequest<T: Encodable>(
         for endpoint: APIEndpoint,
         method: HTTPMethod,
         body: T? = nil,
-        queryItems: [URLQueryItem]? = nil
+        queryItems: [URLQueryItem]? = nil,
+        authToken: String? = nil
     ) throws -> URLRequest {
         var builder: RequestBuilder = RequestBuilder(baseURL: Configuration.backendURL)
             .with(path: endpoint.path)
             .with(method: method)
             .with(queryItems: queryItems)
             .withTimeout(seconds: 30)
+        
+        // Add authorization header if token is provided
+        if let token = authToken {
+            builder = builder.withHeader(key: "Authorization", value: "Bearer \(token)")
+        }
         
         if let body = body {
             builder = builder.withJSONBody(body)
@@ -496,17 +511,24 @@ class NetworkService: NetworkServiceProtocol {
     ///   - endpoint: The API endpoint
     ///   - method: The HTTP method
     ///   - queryItems: Optional query parameters
+    ///   - authToken: Optional authentication token
     /// - Returns: URLRequest
     private func createRequest(
         for endpoint: APIEndpoint,
         method: HTTPMethod,
-        queryItems: [URLQueryItem]? = nil
+        queryItems: [URLQueryItem]? = nil,
+        authToken: String? = nil
     ) throws -> URLRequest {
-        let builder: RequestBuilder = RequestBuilder(baseURL: Configuration.backendURL)
+        var builder: RequestBuilder = RequestBuilder(baseURL: Configuration.backendURL)
             .with(path: endpoint.path)
             .with(method: method)
             .with(queryItems: queryItems)
             .withTimeout(seconds: 30)
+        
+        // Add authorization header if token is provided
+        if let token = authToken {
+            builder = builder.withHeader(key: "Authorization", value: "Bearer \(token)")
+        }
         
         return try builder.build()
     }
