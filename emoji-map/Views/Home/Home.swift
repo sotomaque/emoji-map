@@ -20,6 +20,23 @@ struct Home: View {
     // ViewModel
     @StateObject private var viewModel: HomeViewModel
     
+    // Computed property to determine which places list to display
+    private var placesToDisplay: [Place] {
+        // If we have network-dependent filters, use filteredPlaces
+        if viewModel.hasNetworkDependentFilters {
+            logger.notice("Using filteredPlaces list for display (network-dependent filters active)")
+            return viewModel.filteredPlaces
+        } else if viewModel.showFavoritesOnly || (viewModel.minimumRating > 0 && viewModel.useLocalRatings) {
+            // If we have local-only filters (favorites or local ratings), use filteredPlaces
+            logger.notice("Using filteredPlaces list for display (local filters active)")
+            return viewModel.filteredPlaces
+        } else {
+            // If no filters are active, use the regular places list
+            logger.notice("Using regular places list for display (no filters active)")
+            return viewModel.places
+        }
+    }
+    
     // MARK: - Initialization
     
     init() {
@@ -33,8 +50,8 @@ struct Home: View {
             Map(position: $position) {
                 UserAnnotation()
                 
-                // Display place annotations - use filteredPlaces instead of places
-                ForEach(viewModel.filteredPlaces) { place in
+                // Display place annotations - use placesToDisplay computed property
+                ForEach(placesToDisplay) { place in
                     place.mapAnnotation(onTap: { selectedPlace in
                         viewModel.selectPlace(selectedPlace)
                     })
