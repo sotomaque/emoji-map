@@ -4,7 +4,7 @@
   <img src="emoji-map/Assets.xcassets/AppIcon.appiconset/logo-blur.png" alt="Emoji Map Logo" width="200"/>
 </p>
 
-A beautiful iOS app that helps you discover and remember your favorite restaurants using emoji categories and personalized ratings.
+A beautiful iOS app that helps you discover and remember your favorite restaurants using emoji categories, personalized ratings, and advanced filtering.
 
 ## Features
 
@@ -32,6 +32,15 @@ A beautiful iOS app that helps you discover and remember your favorite restauran
 - Rate restaurants from 1-5 stars
 - Filter to show only your favorite places
 - Combine category filters with favorites filter
+- Sync ratings and favorites with the cloud when signed in
+
+### 🔍 Advanced Filtering
+
+- Filter by price level ($ to $$$$)
+- Filter by minimum rating (1-5 stars)
+- Choose between Google Maps ratings or your personal ratings
+- Filter for places that are currently open
+- Combine multiple filters for precise results
 
 ### 🔔 User Experience
 
@@ -39,12 +48,21 @@ A beautiful iOS app that helps you discover and remember your favorite restauran
 - Haptic feedback for important actions
 - Informative notifications
 - Accessibility support for all users
+- Responsive UI that adapts to different device sizes
+
+### 👤 User Accounts
+
+- Sign in with email or social providers
+- Sync your favorites and ratings across devices
+- Secure authentication with Clerk
+- Automatic data synchronization
 
 ### 🧪 Testing & Quality
 
 - Comprehensive unit test coverage
 - Mock data support for development and testing
 - Thread-safe implementation for reliable performance
+- Optimized for performance with minimal memory usage
 
 ## Documentation
 
@@ -56,7 +74,7 @@ A beautiful iOS app that helps you discover and remember your favorite restauran
 The app follows a modern MVVM (Model-View-ViewModel) architecture pattern with a service-oriented approach:
 
 <p align="center">
-  <img src="https://mermaid.ink/img/pako:eNqNkk1PwzAMhv9KlBMgdYceuExs4sQFcUHixKGqnDZbQ5o6SdVWVf_7krYb0hgCLpHjvI_fOPZJKa2QJWqnrYNXbQxsYGvBwZM2FVhYGlMBfIKtYQ0fYMFZA1ZXYJyGLTjQFVSwA-cNONhrZ6HQtgYHhVEVWNAOXg3UUJrSgK5hDU9QgYUP0BZ2YMrGQK5LWIHWFVRQGVc3Vk8wHo_hXm_qxpYwm81gofUWbDnBeDKBB11WtbFlY6qJmc1msNRlCaacYDKdwlLvwJQTTGczmBtVgqkmOJvP4VFVBZhygml-DnO1A1NPMD0_h4VWBZhqgmk-h6XagVETnOXnsNBqB6aaYJrP4UlVJZhygmk-h5VWJZhqgmk-h5VWOzDVBGf5HFZalWCqCab5HJ61KsGUE0zzOay1KsFUE0zzOay12oGpJpjmc1hrVYKpJpjmc3jRqgRTTjDN5_CqVQmmnGCaz-FNqxJMNcE0n8ObVjsw1QTTfA7vWpVgqgmm+Rw-tCrBlBNM8zl8alWCKSeY5nP40qoEU00wzefwrVUJppxgms_hR6sSTDnBNJ_Dr1YlmGqCaT6HP612YKoJpvkcfrUqwVQTTPM5_GlVgqkmmOZzuNeqBFNOMM3ncK9VCaacYJrP4UGrEkw5wTSfw6NWJZhqgmk-hyetSjDlBNN8Dk9alWDKCab5HJ61KsFUE0zzOTxrVYIpJ5jmc3jRqgRTTjDN5_CiVQmmnGCaz-FVqxJMOcE0n8ObViWYcoJpPoc3rUow5QTTfA7vWpVgygmm+Rw-tCrBlBNM8zl8aFWCKSeY5nP41KoEU04wzefwpVUJppxgms_hW6sSTDnBNJ_Dj1YlmHKCaT6HH61KMOUE03wOv1qVYMoJpvkc_rQqwZQTTPM5_GlVgikn-A9QVhQR" alt="Architecture Diagram" width="800"/>
+  <img src="https://mermaid.ink/img/pako:eNqNkk1PwzAMhv9KlBMgdYceuExs4sQFcUHixKGqnDZbQ5o6SdVWVf_7krYb0hgCLpHjvI_fOPZJKa2QJWqnrYNXbQxsYGvBwZM2FVhYGlMBfIKtYQ0fYMFZA1ZXYJyGLTjQFVSwA-cNONhrZ6HQtgYHhVEVWNAOXg3UUJrSgK5hDU9QgYUP0BZ2YMrGQK5LWIHWFVRQGVc3Vk8wHo_hXm_qxpYwm81gofUWbDnBeDKBB11WtbFlY6qJmc1msNRlCaacYDKdwlLvwJQTTGczmBtVgqkmOJvP4VFVBZhygml-DnO1A1NPMD0_h4VWBZhqgmk-h6VagVETnOXnsNBqB6aaYJrP4UlVJZhygmk-h5VWJZhqgmk-h5VWOzDVBGf5HFZalWCqCab5HJ61KsGUE0zzOay1KsFUE0zzOay12oGpJpjmc1hrVYKpJpjmc3jRqgRTTjDN5_CqVQmmnGCaz-FNqxJMNcE0n8ObVjsw1QTTfA7vWpVgqgmm+Rw-tCrBlBNM8zl8alWCKSeY5nP40qoEU00wzefwrVUJppxgms_hR6sSTDnBNJ_Dr1YlmGqCaT6HP612YKoJpvkcfrUqwVQTTPM5_GlVgqkmmOZzuNeqBFNOMM3ncK9VCaacYJrP4UGrEkw5wTSfw6NWJZhqgmk-hyetSjDlBNN8Dk9alWDKCab5HJ61KsFUE0zzOTxrVYIpJ5jmc3jRqgRTTjDN5_CiVQmmnGCaz-FVqxJMOcE0n8ObViWYcoJpPoc3rUow5QTTfA7vWpVgygmm-Rw-tCrBlBNM8zl8aFWCKSeY5nP41KoEU04wzefwpVUJppxgms_hW6sSTDnBNJ_Dj1YlmHKCaT6HH61KMOUE03wOv1qVYMoJpvkc_rQqwZQTTPM5_GlVgikn-A9QVhQR" alt="Architecture Diagram" width="800"/>
 </p>
 
 ### Models
@@ -66,12 +84,14 @@ The app follows a modern MVVM (Model-View-ViewModel) architecture pattern with a
 - `FavoritePlace`: Stores user's favorite restaurants
 - `PlaceRating`: Manages user's ratings for restaurants
 - `UserPreferences`: Handles persistence of favorites and ratings
+- `User`: Represents the authenticated user and their data
 
 ### ViewModels
 
-- `MapViewModel`: Manages the map state, filtering, and place discovery
+- `HomeViewModel`: Manages the map state, filtering, and place discovery
 - `PlaceDetailViewModel`: Handles detailed information for a selected place
 - `LocationManager`: Provides user location services
+- `FilterViewModel`: Manages the filtering logic for places
 
 ### Views
 
@@ -79,22 +99,20 @@ The app follows a modern MVVM (Model-View-ViewModel) architecture pattern with a
 - `PlaceDetailView`: Detailed view of a restaurant with rating controls
 - `EmojiSelector`: Category filter component
 - `StarRatingView`: Interactive rating component
+- `FilterView`: Advanced filtering interface for price, ratings, and more
 
 ### Services
 
-- `BackendService`: Handles API communication with our backend server
+- `NetworkService`: Handles API communication with our backend server
+- `PlacesService`: Manages fetching and caching of place data
 - `LocationManager`: Manages device location updates
 - `ServiceContainer`: Central dependency injection container
 - `HapticsManager`: Manages haptic feedback
-- `MapAppUtility`: Handles external map app integration
+- `UserPreferences`: Manages user preferences and local storage
 
 ## Backend Architecture
 
 The app uses a modern backend architecture with a RESTful API:
-
-<p align="center">
-  <img src="https://mermaid.ink/img/pako:eNqNksFuwjAMhl_FyglQ2aGHXiZtJ06bxIXtxKGKnLZZQ5o6SQVFvPuStlDYGBqXKLH_z78dO0dltEaWqL22Hl6NtbCBrQMPT8bWYGFpbQ3wCa5hDR_gwlsDTtfgvIMteDBVrGAPPhjwcDDewdK0Dhx4a2BtXQOlrSy4GtawAg8OPsE52IMtWweFqWAF2tSwgtr6prVmgvF4DPdm07S2gul0CgvjtuDKCcaTCTyYqm6cq1pXT8x0OoWlqSpw5QST6RSWZg-2nGA6mcDcqgpcPcHZbAaPuirBVhNM8zk8mj24ZoLpbAYLowpw9QTTfA4LowpwzQTTfA5LowpwzQTTfA5LrfbgmgmmuYeFVgW4ZoJpPoelVgW4ZoJpPoelVntwzQTTfA4rrQpwzQTTfA4rrQpwzQTTfA4rrfbgmgmm-RxWWhXgmgmm-RyetSrANRNM8zk8a1WAayaY5nN41moProHJZALPWhXgmgmm-RxetCrANRNM8zm8aFWAayaY5nN41WoPrplgms_hVasCXDPBNJ_Dm1YFuGaCaT6HN60KcM0E03wOb1rtwTUTTPM5vGtVgGsmmOZzeNeqANdMMM3n8KFVAa6ZYJrP4UOrAlwzwTSfw6dWBbhmgmk-h0-t9uCaCab5HL61KsA1E0zzOXxrVYBrJpjmc_jWqgDXTDDN5_CjVQGumWCaz-FHqwJcM8E0n8OvVgW4ZoJpPodfrcpYwP9QVhQR" alt="Backend Architecture" width="800"/>
-</p>
 
 The app communicates with our backend server at `https://emoji-map-next.vercel.app` which provides:
 
@@ -102,14 +120,25 @@ The app communicates with our backend server at `https://emoji-map-next.vercel.a
 - Caching and optimization
 - API key management (keeping sensitive keys secure)
 - Data transformation and filtering
+- User data synchronization
+- Favorites and ratings storage
+
+## Filtering System
+
+The app implements a sophisticated filtering system that allows users to:
+
+1. **Filter by Price Level**: Select one or more price ranges ($ to $$$$)
+2. **Filter by Rating**: Choose a minimum star rating (1-5)
+3. **Rating Source Selection**: Toggle between Google Maps ratings or personal ratings
+4. **Open Now Filter**: Show only places that are currently open
+5. **Category Filtering**: Filter by food type using emoji categories
+6. **Favorites Filter**: Show only places you've marked as favorites
+
+All filters can be combined for precise results, and the filtering UI provides visual feedback on active filters.
 
 ## Caching System
 
 The app implements a sophisticated caching system to improve performance and reduce API calls:
-
-<p align="center">
-  <img src="https://mermaid.ink/img/pako:eNqNksFuwjAMhl_FyglQ2aGHXiZtJ06bxIXtxKGKnLZZQ5o6SQVFvPuStlDYGBqXKLH_z78dO0dltEaWqL22Hl6NtbCBrQMPT8bWYGFpbQ3wCa5hDR_gwlsDTtfgvIMteDBVrGAPPhjwcDDewdK0Dhx4a2BtXQOlrSy4GtawAg8OPsE52IMtWweFqWAF2tSwgtr6prVmgvF4DPdm07S2gul0CgvjtuDKCcaTCTyYqm6cq1pXT8x0OoWlqSpw5QST6RSWZg-2nGA6mcDcqgpcPcHZbAaPuirBVhNM8zk8mj24ZoLpbAYLowpw9QTTfA4LowpwzQTTfA5LowpwzQTTfA5LrfbgmgmmuYeFVgW4ZoJpPoelVgW4ZoJpPoelVntwzQTTfA4rrQpwzQTTfA4rrQpwzQTTfA4rrfbgmgmm-RxWWhXgmgmm-RyetSrANRNM8zk8a1WAayaY5nN41moProHJZALPWhXgmgmm-RxetCrANRNM8zm8aFWAayaY5nN41WoPrplgms_hVasCXDPBNJ_Dm1YFuGaCaT6HN60KcM0E03wOb1rtwTUTTPM5vGtVgGsmmOZzeNeqANdMMM3n8KFVAa6ZYJrP4UOrAlwzwTSfw6dWBbhmgmk-h0-t9uCaCab5HL61KsA1E0zzOXxrVYBrJpjmc_jWqgDXTDDN5_CjVQGumWCaz-FHqwJcM8E0n8OvVgW4ZoJpPodfrcpYwP9QVhQR" alt="Caching System" width="800"/>
-</p>
 
 The `NetworkCache` class provides:
 
@@ -167,6 +196,8 @@ The app uses a variety of custom UI components:
 - **EmojiSelector**: Horizontal scrolling category filter
 - **StarRatingView**: Interactive rating component
 - **MetalBackgroundView**: Custom Metal-based animated background
+- **FilterView**: Advanced filtering interface with animated buttons
+- **FilterCard**: Reusable card component for filter sections
 
 For details on UI components and z-index management, see the [UI Components Guide](UI_COMPONENTS.md).
 
@@ -176,9 +207,9 @@ The project includes unit and UI tests for key components:
 
 ### Unit Tests
 
-- `BasicTest`: Tests basic functionality and MapViewModel initialization
+- `BasicTest`: Tests basic functionality and HomeViewModel initialization
 
-  - Verifies that the MapViewModel can be properly instantiated
+  - Verifies that the HomeViewModel can be properly instantiated
   - Confirms that the correct number of categories are loaded
 
 - `NetworkURLFormationTests`: Tests network request URL formation
@@ -223,3 +254,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [MapKit](https://developer.apple.com/documentation/mapkit/) - Map services
 - [Metal](https://developer.apple.com/metal/) - Graphics framework
 - [ViewInspector](https://github.com/nalexn/ViewInspector) - SwiftUI testing library
+- [Clerk](https://clerk.com/) - Authentication provider

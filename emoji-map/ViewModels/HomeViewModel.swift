@@ -63,9 +63,11 @@ class HomeViewModel: ObservableObject {
         // Check if minimum rating filter is active
         let hasRatingFilter = minimumRating > 0
         
-        // For now, we only have price level and rating filters active
-        // In the future, we can add more conditions for other filter types
-        return hasPriceLevelFilters || hasRatingFilter
+        // Check if open now filter is active
+        let hasOpenNowFilter = showOpenNowOnly
+        
+        // Return true if any filter is active
+        return hasPriceLevelFilters || hasRatingFilter || hasOpenNowFilter
     }
     
     // Map state
