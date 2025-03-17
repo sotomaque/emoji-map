@@ -63,7 +63,67 @@ struct SettingsSheet: View {
                 // Divider
                 Divider()
                 
-                // Account Section
+               
+                // App Settings Section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("App Settings")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                        .padding(.bottom, 4)
+                    
+                    // View Onboarding Button
+                    Button(action: {
+                        logger.notice("View onboarding requested")
+                        showOnboarding = true
+                    }) {
+                        HStack {
+                            Image(systemName: "book")
+                                .foregroundColor(.blue)
+                            Text("View Onboarding")
+                                .fontWeight(.medium)
+                            
+                            Spacer()
+                            
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    // Reset All Settings Button
+                    Button(action: {
+                        logger.notice("Reset all settings requested")
+                        showResetConfirmation = true
+                    }) {
+                        HStack {
+                            Image(systemName: "arrow.counterclockwise")
+                                .foregroundColor(.red)
+                            Text("Reset All Settings")
+                                .fontWeight(.medium)
+                            
+                            Spacer()
+                            
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(.vertical, 8)
+
+                 // Account Section
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Account")
                         .font(.headline)
@@ -159,154 +219,100 @@ struct SettingsSheet: View {
                 .padding(.vertical, 8)
                 .frame(minHeight: accountSectionMinHeight)
                 
-                // App Settings Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("App Settings")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                        .padding(.bottom, 4)
-                    
-                    // View Onboarding Button
-                    Button(action: {
-                        logger.notice("View onboarding requested")
-                        showOnboarding = true
-                    }) {
-                        HStack {
-                            Image(systemName: "book")
-                                .foregroundColor(.blue)
-                            Text("View Onboarding")
-                                .fontWeight(.medium)
-                            
-                            Spacer()
-                            
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 12)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    // Reset All Settings Button
-                    Button(action: {
-                        logger.notice("Reset all settings requested")
-                        showResetConfirmation = true
-                    }) {
-                        HStack {
-                            Image(systemName: "arrow.counterclockwise")
-                                .foregroundColor(.red)
-                            Text("Reset All Settings")
-                                .fontWeight(.medium)
-                            
-                            Spacer()
-                            
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 12)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-                .padding(.vertical, 8)
                 
                 // Developer Section
-                if let user = clerk.user, (user.publicMetadata?["admin"] as? Bool) == true {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Developer")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                            .padding(.bottom, 4)
-                        
-                        // Places Cache Info
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Places Cache")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                
-                                Spacer()
-                                
-                                Text("\(viewModel.places.count) places")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
+                if let user = clerk.user, let metadata = user.publicMetadata {
+                    // Check if the admin key exists and is true
+                    let isAdmin = metadata["admin"]?.boolValue ?? false
+                    if isAdmin {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Developer")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                                .padding(.bottom, 4)
                             
-                            HStack {
-                                Text("Filtered Places")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
+                            // Places Cache Info
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Places Cache")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    
+                                    Spacer()
+                                    
+                                    Text("\(viewModel.places.count) places")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
                                 
-                                Spacer()
+                                HStack {
+                                    Text("Filtered Places")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    
+                                    Spacer()
+                                    
+                                    Text("\(viewModel.filteredPlaces.count) places")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
                                 
-                                Text("\(viewModel.filteredPlaces.count) places")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                                HStack {
+                                    Text("Selected Categories")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    
+                                    Spacer()
+                                    
+                                    Text("\(viewModel.selectedCategoryKeys.count) categories")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
                             }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
                             
-                            HStack {
-                                Text("Selected Categories")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                
-                                Spacer()
-                                
-                                Text("\(viewModel.selectedCategoryKeys.count) categories")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                            // Clear Cache Button
+                            Button(action: {
+                                viewModel.clearPlaces()
+                                viewModel.placesService.clearCache()
+                                logger.notice("Cache cleared from settings")
+                            }) {
+                                HStack {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.red)
+                                    Text("Clear Places Cache")
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
                             }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            // Refresh Places Button
+                            Button(action: {
+                                viewModel.refreshPlaces(clearExisting: true)
+                                logger.notice("Places refreshed from settings")
+                            }) {
+                                HStack {
+                                    Image(systemName: "arrow.clockwise")
+                                        .foregroundColor(.blue)
+                                    Text("Refresh Places")
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(PlainButtonStyle())
                         }
                         .padding(.vertical, 8)
-                        .padding(.horizontal, 12)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                        
-                        // Clear Cache Button
-                        Button(action: {
-                            viewModel.clearPlaces()
-                            viewModel.placesService.clearCache()
-                            logger.notice("Cache cleared from settings")
-                        }) {
-                            HStack {
-                                Image(systemName: "trash")
-                                    .foregroundColor(.red)
-                                Text("Clear Places Cache")
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        
-                        // Refresh Places Button
-                        Button(action: {
-                            viewModel.refreshPlaces(clearExisting: true)
-                            logger.notice("Places refreshed from settings")
-                        }) {
-                            HStack {
-                                Image(systemName: "arrow.clockwise")
-                                    .foregroundColor(.blue)
-                                Text("Refresh Places")
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
-                        }
-                        .buttonStyle(PlainButtonStyle())
                     }
-                    .padding(.vertical, 8)
                 }
                 
                 Spacer()
@@ -399,118 +405,111 @@ struct SettingsSheet: View {
     // Handle Sign in with Apple completion
     func handleSignInWithAppleCompletion(_ result: Result<ASAuthorization, Error>) {
         Task {
-            do {
-                isAppleSignInLoading = true
-                logger.notice("Apple Sign In completion handler called")
+            isAppleSignInLoading = true
+            logger.notice("Apple Sign In completion handler called")
+            
+            switch result {
+            case .success(let authorization):
+                // Access the Apple ID Credential
+                guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                    logger.error("Unable to get credential of type ASAuthorizationAppleIDCredential")
+                    appleSignInError = "Unable to get Apple credentials"
+                    showAppleSignInError = true
+                    isAppleSignInLoading = false
+                    return
+                }
                 
-                switch result {
-                case .success(let authorization):
-                    // Access the Apple ID Credential
-                    guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-                        logger.error("Unable to get credential of type ASAuthorizationAppleIDCredential")
-                        appleSignInError = "Unable to get Apple credentials"
-                        showAppleSignInError = true
-                        isAppleSignInLoading = false
-                        return
-                    }
-                    
-                    logger.notice("Successfully obtained Apple ID credential")
-                    logger.notice("User identifier: \(credential.user)")
-                    
-                    // Log credential details for debugging (excluding sensitive info)
-                    if let email = credential.email {
-                        logger.notice("Apple credential includes email: \(email)")
-                    } else {
-                        logger.notice("Apple credential does not include email")
-                    }
-                    
-                    if let _ = credential.fullName {
-                        logger.notice("Apple credential includes full name")
-                    } else {
-                        logger.notice("Apple credential does not include full name")
-                    }
-                    
-                    // Verify that we have a valid nonce
-                    guard currentNonce != nil else {
-                        logger.error("Invalid state: A login callback was received, but no login request was sent.")
-                        appleSignInError = "Invalid state: Missing authentication data"
-                        showAppleSignInError = true
-                        isAppleSignInLoading = false
-                        return
-                    }
-                    
-                    // Access the necessary identity token on the Apple ID Credential
-                    guard let identityToken = credential.identityToken else {
-                        logger.error("Identity token is nil in Apple ID Credential")
-                        appleSignInError = "Unable to get Apple ID token"
-                        showAppleSignInError = true
-                        isAppleSignInLoading = false
-                        return
-                    }
-                    
-                    logger.notice("Identity token data length: \(identityToken.count) bytes")
-                    
-                    guard let idToken = String(data: identityToken, encoding: .utf8) else {
-                        logger.error("Unable to convert identity token to string")
-                        appleSignInError = "Unable to process Apple ID token"
-                        showAppleSignInError = true
-                        isAppleSignInLoading = false
-                        return
-                    }
-                    
-                    logger.notice("Successfully extracted identity token from Apple credential")
-                    logger.notice("Token prefix: \(String(idToken.prefix(15)))...")
-                    
-                    // Authenticate with Clerk
-                    logger.notice("Attempting to authenticate with Clerk using Apple ID token")
-                    do {
-                        // Use the standard authenticateWithIdToken method
-                        try await SignIn.authenticateWithIdToken(provider: .apple, idToken: idToken)
-                        logger.notice("User signed in with Apple successfully")
-                        // Fetch user data which will sync favorites with API
-                        await viewModel.fetchUserData()
-                        isAppleSignInLoading = false
-                    } catch let clerkError {
-                        logger.error("Clerk authentication error: \(clerkError.localizedDescription)")
-                        appleSignInError = "Authentication error: \(clerkError.localizedDescription)"
-                        showAppleSignInError = true
-                        isAppleSignInLoading = false
-                    }
-                    
-                case .failure(let error):
-                    // Handle specific error cases
-                    logger.error("Apple Sign In failed with error: \(error.localizedDescription)")
-                    
-                    if let authError = error as? ASAuthorizationError {
-                        switch authError.code {
-                        case .canceled:
-                            logger.notice("User canceled Sign in with Apple")
-                            // User canceled, no need to show error
-                            isAppleSignInLoading = false
-                            return
-                        case .unknown:
-                            appleSignInError = "An unknown error occurred (code: \(authError.code.rawValue))"
-                            logger.error("Unknown Apple Sign In error with code: \(authError.code.rawValue)")
-                        case .invalidResponse:
-                            appleSignInError = "Invalid response from Apple"
-                        case .notHandled:
-                            appleSignInError = "Request not handled"
-                        case .failed:
-                            appleSignInError = "Authorization failed: \(error.localizedDescription)"
-                        default:
-                            appleSignInError = "Error \(authError.code.rawValue): \(error.localizedDescription)"
-                        }
-                    } else {
-                        appleSignInError = "Error: \(error.localizedDescription)"
-                    }
-                    
-                    logger.error("Sign in with Apple error: \(error.localizedDescription)")
+                logger.notice("Successfully obtained Apple ID credential")
+                logger.notice("User identifier: \(credential.user)")
+                
+                // Log credential details for debugging (excluding sensitive info)
+                if let email = credential.email {
+                    logger.notice("Apple credential includes email: \(email)")
+                } else {
+                    logger.notice("Apple credential does not include email")
+                }
+                
+                if let _ = credential.fullName {
+                    logger.notice("Apple credential includes full name")
+                } else {
+                    logger.notice("Apple credential does not include full name")
+                }
+                
+                // Verify that we have a valid nonce
+                guard currentNonce != nil else {
+                    logger.error("Invalid state: A login callback was received, but no login request was sent.")
+                    appleSignInError = "Invalid state: Missing authentication data"
+                    showAppleSignInError = true
+                    isAppleSignInLoading = false
+                    return
+                }
+                
+                // Access the necessary identity token on the Apple ID Credential
+                guard let identityToken = credential.identityToken else {
+                    logger.error("Identity token is nil in Apple ID Credential")
+                    appleSignInError = "Unable to get Apple ID token"
+                    showAppleSignInError = true
+                    isAppleSignInLoading = false
+                    return
+                }
+                
+                logger.notice("Identity token data length: \(identityToken.count) bytes")
+                
+                guard let idToken = String(data: identityToken, encoding: .utf8) else {
+                    logger.error("Unable to convert identity token to string")
+                    appleSignInError = "Unable to process Apple ID token"
+                    showAppleSignInError = true
+                    isAppleSignInLoading = false
+                    return
+                }
+                
+                logger.notice("Successfully extracted identity token from Apple credential")
+                logger.notice("Token prefix: \(String(idToken.prefix(15)))...")
+                
+                // Authenticate with Clerk
+                logger.notice("Attempting to authenticate with Clerk using Apple ID token")
+                do {
+                    // Use the standard authenticateWithIdToken method
+                    try await SignIn.authenticateWithIdToken(provider: .apple, idToken: idToken)
+                    logger.notice("User signed in with Apple successfully")
+                    // Fetch user data which will sync favorites with API
+                    await viewModel.fetchUserData()
+                    isAppleSignInLoading = false
+                } catch let clerkError {
+                    logger.error("Clerk authentication error: \(clerkError.localizedDescription)")
+                    appleSignInError = "Authentication error: \(clerkError.localizedDescription)"
                     showAppleSignInError = true
                     isAppleSignInLoading = false
                 }
-            } catch {
-                logger.error("Unexpected error in Apple Sign In process: \(error.localizedDescription)")
-                appleSignInError = "Unexpected error: \(error.localizedDescription)"
+                
+            case .failure(let error):
+                // Handle specific error cases
+                logger.error("Apple Sign In failed with error: \(error.localizedDescription)")
+                
+                if let authError = error as? ASAuthorizationError {
+                    switch authError.code {
+                    case .canceled:
+                        logger.notice("User canceled Sign in with Apple")
+                        // User canceled, no need to show error
+                        isAppleSignInLoading = false
+                        return
+                    case .unknown:
+                        appleSignInError = "An unknown error occurred (code: \(authError.code.rawValue))"
+                        logger.error("Unknown Apple Sign In error with code: \(authError.code.rawValue)")
+                    case .invalidResponse:
+                        appleSignInError = "Invalid response from Apple"
+                    case .notHandled:
+                        appleSignInError = "Request not handled"
+                    case .failed:
+                        appleSignInError = "Authorization failed: \(error.localizedDescription)"
+                    default:
+                        appleSignInError = "Error \(authError.code.rawValue): \(error.localizedDescription)"
+                    }
+                } else {
+                    appleSignInError = "Error: \(error.localizedDescription)"
+                }
+                
+                logger.error("Sign in with Apple error: \(error.localizedDescription)")
                 showAppleSignInError = true
                 isAppleSignInLoading = false
             }

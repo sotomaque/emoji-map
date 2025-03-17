@@ -99,6 +99,7 @@ struct Place: Identifiable, Codable, Equatable {
 
 // Extension to make Place usable as a map annotation
 extension Place {
+    @MainActor
     func mapAnnotation(onTap: @escaping (Place) -> Void) -> some MapContent {
         Annotation(coordinate: coordinate) {
             // Check if this place is favorited

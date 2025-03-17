@@ -70,6 +70,7 @@ class UserPreferences: ObservableObject {
     /// Toggle favorite status for a place
     /// - Parameter placeId: The ID of the place to toggle
     /// - Returns: The new favorite status (true if favorited, false if unfavorited)
+    @MainActor
     func toggleFavorite(placeId: String) -> Bool {
         let isFavorite: Bool
         
@@ -106,12 +107,13 @@ class UserPreferences: ObservableObject {
     ///   - userId: The user ID
     ///   - placeId: The place ID
     ///   - isFavorite: Whether the place is favorited
+    @MainActor
     private func updateFavoriteInDatabase(userId: String, placeId: String, isFavorite: Bool) {
         // Create a background task to update the database
         Task.detached(priority: .background) {
             do {
                 // Get the network service from the service container
-                let networkService = ServiceContainer.shared.networkService
+                let networkService = await ServiceContainer.shared.networkService
                 
                 // Create the request body
                 let favoriteRequest = FavoriteRequest(
@@ -123,8 +125,8 @@ class UserPreferences: ObservableObject {
                 // Log the request
                 self.logger.notice("Sending favorite update to API: userId=\(userId), placeId=\(placeId), isFavorite=\(isFavorite)")
                 
-                // Make the request to the favorite endpoint
-                let _: PlaceActionResponse = try await networkService.post(
+                // Make the request to update the favorite status
+                let _: FavoriteResponse = try await networkService.post(
                     endpoint: .favorite,
                     body: favoriteRequest,
                     queryItems: nil,
@@ -167,6 +169,7 @@ class UserPreferences: ObservableObject {
     /// - Parameters:
     ///   - placeId: The ID of the place to rate
     ///   - rating: The rating value (1-5)
+    @MainActor
     func setRating(placeId: String, rating: Int) {
         // Ensure rating is within valid range
         let validRating = max(0, min(5, rating))
@@ -191,13 +194,14 @@ class UserPreferences: ObservableObject {
     /// - Parameters:
     ///   - userId: The user ID
     ///   - placeId: The place ID
-    ///   - rating: The rating value (0-5)
+    ///   - rating: The rating value
+    @MainActor
     private func updateRatingInDatabase(userId: String, placeId: String, rating: Int) {
         // Create a background task to update the database
         Task.detached(priority: .background) {
             do {
                 // Get the network service from the service container
-                let networkService = ServiceContainer.shared.networkService
+                let networkService = await ServiceContainer.shared.networkService
                 
                 // Create the request body
                 let ratingRequest = RatingRequest(
@@ -209,8 +213,8 @@ class UserPreferences: ObservableObject {
                 // Log the request
                 self.logger.notice("Sending rating update to API: userId=\(userId), placeId=\(placeId), rating=\(rating)")
                 
-                // Make the request to the rating endpoint
-                let _: PlaceActionResponse = try await networkService.post(
+                // Make the request to update the rating
+                let _: RatingResponse = try await networkService.post(
                     endpoint: .rating,
                     body: ratingRequest,
                     queryItems: nil,

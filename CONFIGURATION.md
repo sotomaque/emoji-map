@@ -10,7 +10,7 @@ Emoji Map uses the following configuration files:
 
 This is the main information property list file for the application. During the build process, the API key is automatically injected into this file from environment variables.
 
-### 2. CustomInfo.plist
+### 2. Info.plist
 
 This is the main information property list file for the application. It contains:
 
@@ -18,7 +18,7 @@ This is the main information property list file for the application. It contains
 - Permission descriptions
 - UI configuration
 
-Location: `emoji-map/CustomInfo.plist`
+Location: `emoji-map/Info.plist`
 
 ## API Key Configuration
 
