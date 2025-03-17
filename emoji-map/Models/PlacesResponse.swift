@@ -9,7 +9,7 @@ import Foundation
 
 // Main response structure from the API
 struct PlacesResponse: Codable {
-    let data: [Place]
+    let results: [Place]
     let count: Int
     let cacheHit: Bool
-} 
+}

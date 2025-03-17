@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CDA8AD482D84954C009488F2 /* Clerk in Frameworks */ = {isa = PBXBuildFile; productRef = CDA8AD472D84954C009488F2 /* Clerk */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		CD12CBEB2D7522C200EFAD77 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CDA8AD482D84954C009488F2 /* Clerk in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -100,7 +105,6 @@
 			buildPhases = (
 				CD12CBD62D7522BB00EFAD77 /* Sources */,
 				CD12CBD72D7522BB00EFAD77 /* Frameworks */,
-				CD9A18262D7A1E800023EDF2 /* Run Script */,
 				CD12CBD82D7522BB00EFAD77 /* Resources */,
 			);
 			buildRules = (
@@ -112,6 +116,7 @@
 			);
 			name = "emoji-map";
 			packageProductDependencies = (
+				CDA8AD472D84954C009488F2 /* Clerk */,
 			);
 			productName = "emoji-map";
 			productReference = CD12CBDA2D7522BB00EFAD77 /* emoji-map.app */;
@@ -169,6 +174,7 @@
 			mainGroup = CD12CBD12D7522BB00EFAD77;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				CDA8AD462D84947B009488F2 /* XCRemoteSwiftPackageReference "clerk-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CD12CBDB2D7522BB00EFAD77 /* Products */;
@@ -197,27 +203,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		CD9A18262D7A1E800023EDF2 /* Run Script */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Run Script";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/bash;
-			shellScript = "# Environment variables are now set in the Xcode scheme\n# This script is kept as a fallback for CI environments\n\necho \"Using environment variables from Xcode scheme\"\n\n# Check if we're running in a CI environment\nif [ -n \"$CI\" ] || [ -n \"$CI_XCODE_CLOUD\" ]; then\n  echo \"Detected CI environment\"\n  \n  # Check if GOOGLE_PLACES_API_KEY environment variable is set\n  if [ -n \"$GOOGLE_PLACES_API_KEY\" ]; then\n    echo \"Using GOOGLE_PLACES_API_KEY from CI environment variables\"\n  else\n    echo \"Warning: GOOGLE_PLACES_API_KEY environment variable not set in CI\"\n    echo \"App will run in mock mode\"\n  fi\nfi\n\n# Print environment variables for debugging\necho \"GOOGLE_PLACES_API_KEY is ${GOOGLE_PLACES_API_KEY:+set}${GOOGLE_PLACES_API_KEY:-not set}\"\n\nexit 0\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		CD12CBD62D7522BB00EFAD77 /* Sources */ = {
@@ -369,17 +354,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "emoji-map/emoji-map.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"emoji-map/Preview Content\"";
 				DEVELOPMENT_TEAM = T7FKXBRC5Q;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "emoji-map/CustomInfo.plist";
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = EmojiMap;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.food-and-drink";
 				INFOPLIST_KEY_LSApplicationQueriesSchemes = "comgooglemaps waze maps";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to show nearby places.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "EmojiMap uses your location to find and display nearby restaurants, cafes, and other points of interest on the map. For example, we'll show you coffee shops within walking distance of your current location.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -405,17 +390,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "emoji-map/emoji-map.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"emoji-map/Preview Content\"";
 				DEVELOPMENT_TEAM = T7FKXBRC5Q;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "emoji-map/CustomInfo.plist";
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = EmojiMap;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.food-and-drink";
 				INFOPLIST_KEY_LSApplicationQueriesSchemes = "comgooglemaps waze maps";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to show nearby places.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "EmojiMap uses your location to find and display nearby restaurants, cafes, and other points of interest on the map. For example, we'll show you coffee shops within walking distance of your current location.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -507,6 +492,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CDA8AD462D84947B009488F2 /* XCRemoteSwiftPackageReference "clerk-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/clerk/clerk-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.50.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CDA8AD472D84954C009488F2 /* Clerk */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CDA8AD462D84947B009488F2 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = Clerk;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CD12CBD22D7522BB00EFAD77 /* Project object */;
 }

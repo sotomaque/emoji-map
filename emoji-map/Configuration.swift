@@ -19,10 +19,16 @@ struct Configuration {
     /// Set this to true to use localhost:3000 instead of production URL
     static let IS_DEV_SERVER = false
     
+    
+    // currently set to my branch emoji-map-next-git-fix-geobounds-enriques-projects-b7c71f69.vercel.app
+    static let IS_STAGING_SERVER = false
+    
     /// The IP address of your development machine
     /// Change this to your computer's local IP address (e.g., "192.168.1.100")
     /// You can find your IP address by running `ipconfig getifaddr en0` in Terminal
     static let DEV_SERVER_IP = "192.168.1.240"
+    // 10.82.253.150 (library)
+    // 192.168.1.240 (default at home)
     
     /// The port your development server is running on
     static let DEV_SERVER_PORT = "3000"

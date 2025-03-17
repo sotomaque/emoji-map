@@ -53,9 +53,9 @@ struct AllCategoriesButton: View {
                 .fill(isSelected ? Color.accentColor : Color(.systemBackground))
                 .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
             
-            // All icon
-            Image(systemName: "square.grid.2x2")
-                .font(.system(size: 20))
+            // "All" text instead of grid icon
+            Text("All")
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(isSelected ? .white : .primary)
                 .opacity(isLoading ? 0.5 : 1.0)
         }

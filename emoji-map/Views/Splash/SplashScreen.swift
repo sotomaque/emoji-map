@@ -6,19 +6,16 @@
 //
 
 import SwiftUI
-import QuartzCore
 
 struct SplashScreen: View {
     // Animation states
-    @State private var isAnimating = false
     @State private var showLogo = false
     @State private var showTitle = false
     @State private var showTagline = false
-    @State private var showEmojis = false
     @State private var finishedAnimation = false
     
-    // Emoji animation properties
-    @State private var emojis: [(emoji: String, position: CGPoint, scale: CGFloat, rotation: Double, opacity: Double)] = []
+    // Static emoji properties
+    private let staticEmojis: [(emoji: String, x: CGFloat, y: CGFloat, rotation: Double, scale: CGFloat)]
     
     // Completion handler
     var onFinished: () -> Void
@@ -26,32 +23,47 @@ struct SplashScreen: View {
     // Food emojis from the app
     private let foodEmojis = ["🍕", "🍔", "🌮", "🍣", "🍜", "🍦", "🍷", "🍺", "☕️", "🥗", "🍲", "🥪"]
     
-    // Screen dimensions
-    private let screenWidth = UIScreen.main.bounds.width
-    private let screenHeight = UIScreen.main.bounds.height
-    
     init(onFinished: @escaping () -> Void) {
         self.onFinished = onFinished
+        
+        // Create static emojis with random positions and rotations
+        var emojis: [(emoji: String, x: CGFloat, y: CGFloat, rotation: Double, scale: CGFloat)] = []
+        let screenWidth = UIScreen.main.bounds.width
+        let screenHeight = UIScreen.main.bounds.height
+        
+        for _ in 0..<20 {
+            let emoji = foodEmojis.randomElement() ?? "🍕"
+            let x = CGFloat.random(in: 0...screenWidth)
+            let y = CGFloat.random(in: 0...screenHeight)
+            let rotation = Double.random(in: 0...360)
+            let scale = CGFloat.random(in: 0.5...1.5)
+            
+            emojis.append((emoji: emoji, x: x, y: y, rotation: rotation, scale: scale))
+        }
+        
+        self.staticEmojis = emojis
     }
     
     var body: some View {
         ZStack {
-            // Animated gradient background
+            // Solid background color to ensure complete coverage
+            Color.blue.opacity(0.8)
+                .ignoresSafeArea()
+            
+            // Gradient background
             LinearGradient(
                 gradient: Gradient(colors: [Color.blue.opacity(0.7), Color.purple.opacity(0.7)]),
-                startPoint: isAnimating ? .topLeading : .bottomTrailing,
-                endPoint: isAnimating ? .bottomTrailing : .topLeading
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
-            .animation(Animation.easeInOut(duration: 3.0).repeatForever(autoreverses: true), value: isAnimating)
             
-            // Emoji particles
-            ForEach(0..<emojis.count, id: \.self) { index in
-                Text(emojis[index].emoji)
-                    .font(.system(size: 30 * emojis[index].scale))
-                    .position(emojis[index].position)
-                    .rotationEffect(.degrees(emojis[index].rotation))
-                    .opacity(emojis[index].opacity)
+            // Static emoji decorations
+            ForEach(0..<staticEmojis.count, id: \.self) { index in
+                Text(staticEmojis[index].emoji)
+                    .font(.system(size: 30 * staticEmojis[index].scale))
+                    .position(x: staticEmojis[index].x, y: staticEmojis[index].y)
+                    .rotationEffect(.degrees(staticEmojis[index].rotation))
             }
             
             VStack(spacing: 20) {
@@ -61,7 +73,6 @@ struct SplashScreen: View {
                     .foregroundColor(.white)
                     .opacity(showLogo ? 1 : 0)
                     .scaleEffect(showLogo ? 1 : 0.5)
-                    .animation(.spring(response: 0.6, dampingFraction: 0.6), value: showLogo)
                 
                 // App title
                 Text("Emoji Map")
@@ -69,15 +80,13 @@ struct SplashScreen: View {
                     .foregroundColor(.white)
                     .opacity(showTitle ? 1 : 0)
                     .offset(y: showTitle ? 0 : 20)
-                    .animation(.easeOut(duration: 0.7).delay(0.3), value: showTitle)
                 
                 // App tagline
-                Text("Discover places with emojis")
+                Text("Smooth Brain? Smooth Map")
                     .font(.system(size: 20, weight: .medium, design: .rounded))
                     .foregroundColor(.white.opacity(0.9))
                     .opacity(showTagline ? 1 : 0)
                     .offset(y: showTagline ? 0 : 15)
-                    .animation(.easeOut(duration: 0.7).delay(0.5), value: showTagline)
             }
             .padding()
         }
@@ -85,11 +94,8 @@ struct SplashScreen: View {
             // Start animations
             startAnimations()
             
-            // Create emoji particles
-            createEmojiParticles()
-            
             // Set a timer to finish the splash screen
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 withAnimation(.easeOut(duration: 0.5)) {
                     finishedAnimation = true
                 }
@@ -101,89 +107,43 @@ struct SplashScreen: View {
             }
         }
         .opacity(finishedAnimation ? 0 : 1)
+        .zIndex(finishedAnimation ? -1 : 100) // Ensure splash screen is on top until animation finishes
+        .transition(.opacity) // Smooth transition when disappearing
     }
     
     private func startAnimations() {
-        // Start gradient animation
-        isAnimating = true
-        
-        // Sequence the animations
-        withAnimation(.easeOut(duration: 0.5)) {
+        // Sequence the animations with explicit animations
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.6)) {
             showLogo = true
         }
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation {
+            withAnimation(.easeOut(duration: 0.7)) {
                 showTitle = true
             }
         }
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            withAnimation {
+            withAnimation(.easeOut(duration: 0.7)) {
                 showTagline = true
             }
         }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            withAnimation {
-                showEmojis = true
-            }
-        }
     }
-    
-    private func createEmojiParticles() {
-        // Create initial emoji particles
-        for _ in 0..<15 {
-            let randomX = CGFloat.random(in: 0...screenWidth)
-            let randomY = CGFloat.random(in: 0...screenHeight)
-            let randomEmoji = foodEmojis.randomElement() ?? "🍕"
-            let randomScale = CGFloat.random(in: 0.5...1.5)
-            let randomRotation = Double.random(in: 0...360)
-            let randomOpacity = Double.random(in: 0.5...1.0)
+}
+
+// Extension to use SplashScreen as a full-screen cover
+extension View {
+    func splashScreen(isPresented: Binding<Bool>, onDismiss: @escaping () -> Void) -> some View {
+        ZStack {
+            self
             
-            let particle = (
-                emoji: randomEmoji,
-                position: CGPoint(x: randomX, y: randomY),
-                scale: randomScale,
-                rotation: randomRotation,
-                opacity: randomOpacity
-            )
-            
-            emojis.append(particle)
-        }
-        
-        // Animate the emojis
-        animateEmojis()
-    }
-    
-    private func animateEmojis() {
-        guard showEmojis else { return }
-        
-        // Create a timer to update emoji positions
-        let timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
-            for i in 0..<emojis.count {
-                var emoji = emojis[i]
-                
-                // Update position with a floating effect
-                emoji.position.y -= CGFloat.random(in: 0.5...2.0)
-                emoji.position.x += CGFloat.random(in: -1.0...1.0)
-                
-                // Update rotation
-                emoji.rotation += Double.random(in: -2...2)
-                
-                // Remove emojis that go off screen and add new ones
-                if emoji.position.y < -50 {
-                    let randomX = CGFloat.random(in: 0...screenWidth)
-                    emoji.position = CGPoint(x: randomX, y: screenHeight + 50)
-                }
-                
-                emojis[i] = emoji
+            if isPresented.wrappedValue {
+                SplashScreen(onFinished: {
+                    isPresented.wrappedValue = false
+                    onDismiss()
+                })
+                .transition(.opacity)
             }
-        }
-        
-        // Invalidate the timer when the animation is finished
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-            timer.invalidate()
         }
     }
 }
@@ -191,7 +151,7 @@ struct SplashScreen: View {
 struct SplashScreen_Previews: PreviewProvider {
     static var previews: some View {
         SplashScreen {
-            print("Splash screen finished")
+            // No logging in preview
         }
     }
 } 
