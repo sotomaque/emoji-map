@@ -70,7 +70,8 @@ struct Home: View {
                                 Text("🔍")
                                     .font(.title2)
                                     .padding()
-                                    .background(Color(.systemBackground))
+                                    .background(viewModel.hasActiveFilters ? Color.blue : Color(.systemBackground))
+                                    .foregroundColor(viewModel.hasActiveFilters ? .white : .primary)
                                     .clipShape(Circle())
                                     .shadow(radius: 4)
                             }
@@ -139,8 +140,8 @@ struct Home: View {
         }
         .sheet(isPresented: $viewModel.isFilterSheetPresented) {
             PlaceSheet(viewModel: viewModel)
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $viewModel.isPlaceDetailSheetPresented) {
             if let selectedPlace = viewModel.selectedPlace {

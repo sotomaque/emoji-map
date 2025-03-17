@@ -35,6 +35,27 @@ class HomeViewModel: ObservableObject {
     
     // Filter state
     @Published var selectedPriceLevels: Set<Int> = []
+    @Published var minimumRating: Int = 0
+    @Published var useLocalRatings: Bool = false
+    
+    // Computed property to check if there are active filters
+    var hasActiveFilters: Bool {
+        // Check if price levels are not all selected and not empty
+        let allPriceLevelsSelected = selectedPriceLevels.count == 4 && 
+                                    selectedPriceLevels.contains(1) && 
+                                    selectedPriceLevels.contains(2) && 
+                                    selectedPriceLevels.contains(3) && 
+                                    selectedPriceLevels.contains(4)
+        
+        let hasPriceLevelFilters = !selectedPriceLevels.isEmpty && !allPriceLevelsSelected
+        
+        // Check if minimum rating filter is active
+        let hasRatingFilter = minimumRating > 0
+        
+        // For now, we only have price level and rating filters active
+        // In the future, we can add more conditions for other filter types
+        return hasPriceLevelFilters || hasRatingFilter
+    }
     
     // Map state
     @Published var visibleRegion: MKCoordinateRegion?
@@ -300,7 +321,8 @@ class HomeViewModel: ObservableObject {
             logger.notice("Showing only \(self.userPreferences.favoritePlaceIds.count) favorited places")
         }
         
-        applyFilters()
+        // Update filtered places based on the current state
+        updateFilteredPlaces()
     }
     
     /// Toggle all categories mode
@@ -398,12 +420,13 @@ class HomeViewModel: ObservableObject {
                                         selectedPriceLevels.contains(4)
             
             // If all price levels are selected, treat it as if no price level filter is applied
-            let priceLevelsToUse: [Int]? = if selectedPriceLevels.isEmpty || allPriceLevelsSelected {
+            let priceLevelsToUse: [Int]?
+            if selectedPriceLevels.isEmpty || allPriceLevelsSelected {
                 logger.notice("No price level filtering applied (empty or all levels selected)")
-                nil
+                priceLevelsToUse = nil
             } else {
-                logger.notice("Applying price level filter: \(Array(selectedPriceLevels))")
-                Array(selectedPriceLevels)
+                logger.notice("Applying price level filter: \(Array(self.selectedPriceLevels))")
+                priceLevelsToUse = Array(selectedPriceLevels)
             }
             
             // Create request body with filters
@@ -687,7 +710,43 @@ class HomeViewModel: ObservableObject {
     
     /// Update filtered places based on current places
     private func updateFilteredPlaces() {
-        filteredPlaces = places
-        logger.notice("Updated filtered places: showing \(self.filteredPlaces.count) of \(self.places.count) places")
+        // Start with all places
+        var filtered = places
+        
+        // Apply favorites filter if enabled
+        if showFavoritesOnly {
+            let favoritePlaceIds = userPreferences.favoritePlaceIds
+            filtered = filtered.filter { place in
+                return favoritePlaceIds.contains(place.id)
+            }
+            logger.notice("Applied favorites filter: \(filtered.count) of \(self.places.count) places")
+        }
+        
+        // Apply minimum rating filter if enabled
+        if minimumRating > 0 {
+            if useLocalRatings {
+                // Filter based on user's own ratings
+                filtered = filtered.filter { place in
+                    let userRating = userPreferences.getRating(placeId: place.id)
+                    return userRating >= minimumRating
+                }
+                logger.notice("Applied minimum user rating filter (\(self.minimumRating)+ stars): \(filtered.count) places remaining")
+            } else {
+                // Filter based on Google ratings
+                filtered = filtered.filter { place in
+                    // If the place has a rating, check if it meets the minimum
+                    // If no rating is available, exclude the place
+                    if let rating = place.rating {
+                        return rating >= Double(minimumRating)
+                    }
+                    return false
+                }
+                logger.notice("Applied minimum Google rating filter (\(self.minimumRating)+ stars): \(filtered.count) places remaining")
+            }
+        }
+        
+        // Update the filtered places
+        filteredPlaces = filtered
+        logger.notice("Final filtered places: \(self.filteredPlaces.count) of \(self.places.count) places")
     }
 } 
