@@ -37,6 +37,7 @@ class HomeViewModel: ObservableObject {
     @Published var selectedPriceLevels: Set<Int> = []
     @Published var minimumRating: Int = 0
     @Published var useLocalRatings: Bool = false
+    @Published var showOpenNowOnly: Bool = false
     
     // Computed property to check if all price levels are selected or none are selected
     var allPriceLevelsSelected: Bool {
@@ -62,9 +63,11 @@ class HomeViewModel: ObservableObject {
         // Check if minimum rating filter is active
         let hasRatingFilter = minimumRating > 0
         
-        // For now, we only have price level and rating filters active
-        // In the future, we can add more conditions for other filter types
-        return hasPriceLevelFilters || hasRatingFilter
+        // Check if open now filter is active
+        let hasOpenNowFilter = showOpenNowOnly
+        
+        // Return true if any filter is active
+        return hasPriceLevelFilters || hasRatingFilter || hasOpenNowFilter
     }
     
     // Map state
@@ -446,7 +449,7 @@ class HomeViewModel: ObservableObject {
             // Create request body with filters
             let requestBody = PlaceSearchRequest(
                 keys: isAllCategoriesMode ? nil : Array(selectedCategoryKeys),
-                openNow: nil, // Could add this filter in the future
+                openNow: showOpenNowOnly ? true : nil, // Use the showOpenNowOnly filter
                 priceLevels: priceLevelsToUse,
                 radius: 5000, // Default radius
                 location: PlaceSearchRequest.LocationCoordinate(

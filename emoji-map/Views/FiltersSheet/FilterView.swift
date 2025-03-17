@@ -96,7 +96,10 @@ struct FilterView: View {
         // Check if rating source has changed from the view model's value
         let ratingSourceChanged = useLocalRatings != viewModel.useLocalRatings
         
-        return priceLevelsChanged || ratingChanged || ratingSourceChanged
+        // Check if open now filter has changed
+        let openNowChanged = showOpenNowOnly != viewModel.showOpenNowOnly
+        
+        return priceLevelsChanged || ratingChanged || ratingSourceChanged || openNowChanged
     }
     
     // Computed property to check if filters are non-default
@@ -140,6 +143,9 @@ struct FilterView: View {
         // Initialize rating filter state from view model
         _minimumRating = State(initialValue: viewModel.minimumRating)
         _useLocalRatings = State(initialValue: viewModel.useLocalRatings)
+        
+        // Initialize open now filter state from view model
+        _showOpenNowOnly = State(initialValue: viewModel.showOpenNowOnly)
     }
     
     var body: some View {
@@ -374,6 +380,9 @@ struct FilterView: View {
         // Update the view model with the minimum rating and rating source
         viewModel.minimumRating = minimumRating
         viewModel.useLocalRatings = useLocalRatings
+        
+        // Update the view model with the open now filter
+        viewModel.showOpenNowOnly = showOpenNowOnly
         
         // Apply the filters
         viewModel.applyFilters()
