@@ -11,6 +11,7 @@ import UIKit
 
 struct PlaceSheet: View {
     var place: Place?
+    var viewModel: HomeViewModel?
     
     // Logger
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "PlaceSheet")
@@ -19,11 +20,12 @@ struct PlaceSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             if let place = place {
                 PlaceDetailView(place: place)
+            } else if let viewModel = viewModel {
+                FilterView(viewModel: viewModel)
             } else {
-                // Filter UI (original purpose of the sheet)
-                Text("Filter Places")
-                    .font(.largeTitle)
-                    .padding()
+                Text("No content to display")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
             }
         }
         .padding()
@@ -616,5 +618,5 @@ struct ShimmerView: View {
 }
 
 #Preview {
-    PlaceSheet(place: Place(id: "preview-id", emoji: "🏠", location: Place.Location(latitude: 37.7749, longitude: -122.4194)))
+    PlaceSheet(place: Place(id: "preview-id", emoji: "🏠", location: Place.Location(latitude: 37.7749, longitude: -122.4194)), viewModel: HomeViewModel(placesService: PlacesService(), userPreferences: UserPreferences()))
 } 

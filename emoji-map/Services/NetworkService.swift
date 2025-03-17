@@ -93,7 +93,7 @@ enum HTTPMethod: String {
 
 /// Enum representing API endpoints
 enum APIEndpoint {
-    case nearbyPlaces
+    case placeSearch
     case placeDetails
     case placePhotos
     case user
@@ -102,8 +102,8 @@ enum APIEndpoint {
     
     var path: String {
         switch self {
-        case .nearbyPlaces:
-            return "api/places/nearby"
+        case .placeSearch:
+            return "api/places/search"
         case .placeDetails:
             return "api/places/details"
         case .placePhotos:
@@ -295,7 +295,8 @@ struct RequestBuilder {
         var builder = self
         do {
             let encoder = JSONEncoder()
-            encoder.keyEncodingStrategy = .convertToSnakeCase
+            // Use default key encoding strategy (no conversion) to keep camelCase property names
+            // encoder.keyEncodingStrategy = .convertToSnakeCase
             builder.body = try encoder.encode(jsonObject)
             builder = builder.withHeader(key: "Content-Type", value: "application/json")
         } catch {

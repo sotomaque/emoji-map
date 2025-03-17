@@ -33,6 +33,9 @@ class HomeViewModel: ObservableObject {
     @Published var isAllCategoriesMode: Bool = true
     @Published var showFavoritesOnly: Bool = false
     
+    // Filter state
+    @Published var selectedPriceLevels: Set<Int> = []
+    
     // Map state
     @Published var visibleRegion: MKCoordinateRegion?
     private var lastFetchedRegion: MKCoordinateRegion?
@@ -358,39 +361,91 @@ class HomeViewModel: ObservableObject {
     }
     
     /// Apply filters to places based on selected categories
-    private func applyFilters() {
-        // Start with all places
-        var filtered = places
+    func applyFilters() {
+        logger.notice("Applying filters: price levels = \(self.selectedPriceLevels)")
         
-        // Apply category filter if not in "All" mode
-        if !isAllCategoriesMode && !selectedCategoryKeys.isEmpty {
-            // Convert emoji to keys for filtering
-            let emojiToKeyMap: [String: Int] = [
-                "🍕": 1, "🍺": 2, "🍣": 3, "☕️": 4, "🍔": 5,
-                "🌮": 6, "🍜": 7, "🥗": 8, "🍦": 9, "🍷": 10,
-                "🍲": 11, "🥪": 12, "🍝": 13, "🥩": 14, "🍗": 15,
-                "🍤": 16, "🍛": 17, "🥘": 18, "🍱": 19, "🥟": 20,
-                "🧆": 21, "🥐": 22, "🍨": 23, "🍹": 24, "🍽️": 25
-            ]
+        // Create the request body with the selected filters
+        let location = visibleRegion?.center ?? locationManager.lastLocation?.coordinate
+        
+        guard let location = location else {
+            errorMessage = "Unable to determine your location"
+            logger.error("Apply filters failed: No location available")
+            return
+        }
+        
+        // Refresh places with the new filters
+        Task {
+            await fetchPlacesWithFilters(at: location)
+        }
+    }
+    
+    /// Fetch places with applied filters
+    private func fetchPlacesWithFilters(at location: CLLocationCoordinate2D) async {
+        guard !isLoading else {
+            logger.notice("Skipping fetch with filters - already loading")
+            return
+        }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            // Check if all price levels are selected (1,2,3,4)
+            let allPriceLevelsSelected = selectedPriceLevels.count == 4 && 
+                                        selectedPriceLevels.contains(1) && 
+                                        selectedPriceLevels.contains(2) && 
+                                        selectedPriceLevels.contains(3) && 
+                                        selectedPriceLevels.contains(4)
             
-            filtered = filtered.filter { place in
-                if let key = emojiToKeyMap[place.emoji] {
-                    return selectedCategoryKeys.contains(key)
-                }
-                return false
+            // If all price levels are selected, treat it as if no price level filter is applied
+            let priceLevelsToUse: [Int]? = if selectedPriceLevels.isEmpty || allPriceLevelsSelected {
+                logger.notice("No price level filtering applied (empty or all levels selected)")
+                nil
+            } else {
+                logger.notice("Applying price level filter: \(Array(selectedPriceLevels))")
+                Array(selectedPriceLevels)
             }
+            
+            // Create request body with filters
+            let requestBody = PlaceSearchRequest(
+                keys: isAllCategoriesMode ? nil : Array(selectedCategoryKeys),
+                openNow: nil, // Could add this filter in the future
+                priceLevels: priceLevelsToUse,
+                radius: 5000, // Default radius
+                location: PlaceSearchRequest.LocationCoordinate(
+                    latitude: location.latitude,
+                    longitude: location.longitude
+                ),
+                bypassCache: true, // Always bypass cache when applying filters
+                maxResultCount: nil
+            )
+            
+            logger.notice("Fetching places with filters at location: \(location.latitude), \(location.longitude)")
+            
+            let response: PlacesResponse = try await placesService.fetchWithFilters(
+                location: location,
+                requestBody: requestBody
+            )
+            
+            // Log the response details
+            logger.notice("Response from API: count=\(response.count), cacheHit=\(response.cacheHit), results.count=\(response.results.count)")
+            
+            // Clear existing places before updating with filtered results
+            self.places.removeAll()
+            
+            // Update places with the filtered results
+            self.places = response.results
+            self.updateFilteredPlaces()
+            
+            logger.notice("Successfully fetched \(response.results.count) places with filters")
+            
+            // Ensure loading indicator is turned off
+            isLoading = false
+        } catch {
+            logger.error("Failed to fetch places with filters: \(error.localizedDescription)")
+            errorMessage = "Failed to fetch places: \(error.localizedDescription)"
+            isLoading = false
         }
-        
-        // Apply favorites filter
-        if showFavoritesOnly {
-            filtered = filtered.filter { place in
-                return userPreferences.isFavorite(placeId: place.id)
-            }
-        }
-        
-        // Update filtered places
-        filteredPlaces = filtered
-        logger.notice("Applied filters: showing \(self.filteredPlaces.count) of \(self.places.count) places")
     }
     
     /// Fetch places by selected category keys
@@ -628,5 +683,11 @@ class HomeViewModel: ObservableObject {
         places.removeAll()
         filteredPlaces.removeAll()
         logger.notice("Cleared all places")
+    }
+    
+    /// Update filtered places based on current places
+    private func updateFilteredPlaces() {
+        filteredPlaces = places
+        logger.notice("Updated filtered places: showing \(self.filteredPlaces.count) of \(self.places.count) places")
     }
 } 

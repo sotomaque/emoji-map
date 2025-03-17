@@ -548,6 +548,10 @@ private class PreviewMockPlacesService: PlacesServiceProtocol {
         return []
     }
     
+    @MainActor func fetchWithFilters(location: CLLocationCoordinate2D, requestBody: PlaceSearchRequest) async throws -> PlacesResponse {
+        return PlacesResponse(results: [], count: 0, cacheHit: false)
+    }
+    
     @MainActor func clearCache() {
         // No-op for preview
     }

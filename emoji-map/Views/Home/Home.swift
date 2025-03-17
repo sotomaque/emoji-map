@@ -138,7 +138,7 @@ struct Home: View {
             }
         }
         .sheet(isPresented: $viewModel.isFilterSheetPresented) {
-            PlaceSheet()
+            PlaceSheet(viewModel: viewModel)
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
