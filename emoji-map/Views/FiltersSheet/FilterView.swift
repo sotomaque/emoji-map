@@ -102,13 +102,7 @@ struct FilterView: View {
     // Computed property to check if filters are non-default
     private var hasNonDefaultFilters: Bool {
         // Check if price levels are not all selected (default is all selected)
-        let allPriceLevelsSelected = selectedPriceLevels.count == 4 && 
-                                    selectedPriceLevels.contains(1) && 
-                                    selectedPriceLevels.contains(2) && 
-                                    selectedPriceLevels.contains(3) && 
-                                    selectedPriceLevels.contains(4)
-        
-        let hasPriceLevelFilters = !allPriceLevelsSelected
+        let hasPriceLevelFilters = !viewModel.allPriceLevelsSelected
         
         // Check if minimum rating filter is active
         let hasRatingFilter = minimumRating > 0
@@ -117,17 +111,27 @@ struct FilterView: View {
         return hasPriceLevelFilters || hasRatingFilter || showOpenNowOnly
     }
     
+    // Computed property to check if all price levels are selected in the local state or none are selected
+    private var allPriceLevelsSelectedLocally: Bool {
+        // If no price levels are selected, it's the same as all being selected (no filtering)
+        if selectedPriceLevels.isEmpty {
+            return true
+        }
+        
+        // Otherwise, check if all 4 price levels are selected
+        return selectedPriceLevels.count == 4 && 
+               selectedPriceLevels.contains(1) && 
+               selectedPriceLevels.contains(2) && 
+               selectedPriceLevels.contains(3) && 
+               selectedPriceLevels.contains(4)
+    }
+    
     // Initialize with the view model and load current filter settings
     init(viewModel: HomeViewModel) {
         self.viewModel = viewModel
         
-        // Initialize with current filter settings from the view model
-        var priceLevels = viewModel.selectedPriceLevels
-        
-        // If no price levels are selected, default to all
-        if priceLevels.isEmpty {
-            priceLevels = [1, 2, 3, 4]
-        }
+        // Always initialize with all price levels selected for consistent behavior
+        let priceLevels: Set<Int> = [1, 2, 3, 4]
         
         // Initialize state variables
         _selectedPriceLevels = State(initialValue: priceLevels)
@@ -205,7 +209,7 @@ struct FilterView: View {
                             }
                     }
                     
-                    // Minimum Rating Card (placeholder, not functional yet)
+                    // Minimum Rating Card - fully functional for both Google Maps and user ratings
                     FilterCard(title: "Minimum Rating") {
                         VStack(alignment: .leading, spacing: 16) {
                             // Rating source toggle
@@ -220,9 +224,6 @@ struct FilterView: View {
                                 }
                                 .pickerStyle(SegmentedPickerStyle())
                                 .padding(.bottom, 8)
-                                .onChange(of: useLocalRatings) { newValue in
-                                    logger.notice("Rating source changed to: \(newValue ? "My Ratings" : "Google Maps")")
-                                }
                             }
                             
                             Divider()
@@ -235,15 +236,6 @@ struct FilterView: View {
                                         .foregroundColor(.secondary)
                                     
                                     Spacer()
-                                    
-                                    if minimumRating > 0 {
-                                        Button("Clear") {
-                                            minimumRating = 0
-                                            logger.notice("Minimum rating cleared")
-                                        }
-                                        .font(.subheadline)
-                                        .foregroundColor(accentColor)
-                                    }
                                 }
                                 
                                 HStack {
@@ -311,19 +303,48 @@ struct FilterView: View {
         // Create a mutable copy of the set
         var updatedPriceLevels = selectedPriceLevels
         
-        if selectedPriceLevels.contains(level) {
-            // Don't allow deselecting all price levels
-            if selectedPriceLevels.count > 1 {
-                updatedPriceLevels.remove(level)
-            }
-        } else {
+        // Check if we're in the initial state with all price levels selected or none selected
+        let allSelected = selectedPriceLevels.count == 4 && 
+                          selectedPriceLevels.contains(1) && 
+                          selectedPriceLevels.contains(2) && 
+                          selectedPriceLevels.contains(3) && 
+                          selectedPriceLevels.contains(4)
+        let noneSelected = selectedPriceLevels.isEmpty
+        
+        // If all are selected or none are selected, and user clicks on a level,
+        // clear everything and select only that level
+        if (allSelected || noneSelected) && !selectedPriceLevels.contains(level) {
+            updatedPriceLevels.removeAll()
             updatedPriceLevels.insert(level)
+            logger.notice("Starting from all/none selected: cleared all and selected only \(level)")
+        } 
+        // If all are selected and user clicks on a selected level, 
+        // clear everything except that level (keep only that level)
+        else if allSelected && selectedPriceLevels.contains(level) {
+            updatedPriceLevels.removeAll()
+            updatedPriceLevels.insert(level)
+            logger.notice("Starting from all selected: kept only \(level)")
+        }
+        // Normal toggle behavior for other cases
+        else if selectedPriceLevels.contains(level) {
+            // If this is the only selected level, don't allow deselecting it
+            if selectedPriceLevels.count == 1 {
+                return
+            }
+            
+            // Otherwise, remove this price level
+            updatedPriceLevels.remove(level)
+            logger.notice("Removed price level \(level)")
+        } else {
+            // Add this level to the existing selection
+            updatedPriceLevels.insert(level)
+            logger.notice("Added price level \(level) to existing selection")
         }
         
         // Update the state with the new set
         selectedPriceLevels = updatedPriceLevels
         
-        logger.notice("Price level \(level) \(selectedPriceLevels.contains(level) ? "selected" : "deselected"). Selected levels: \(selectedPriceLevels)")
+        logger.notice("Price level selection updated. Selected levels: \(Array(selectedPriceLevels).sorted())")
         
         // Provide haptic feedback
         let generator = UIImpactFeedbackGenerator(style: .light)
@@ -338,7 +359,7 @@ struct FilterView: View {
         minimumRating = 0
         useLocalRatings = false
         
-        logger.notice("All filters reset to default values")
+        logger.notice("All filters reset to default values: all price levels selected, minimum rating cleared")
         
         // Provide haptic feedback
         let generator = UINotificationFeedbackGenerator()
@@ -359,7 +380,7 @@ struct FilterView: View {
         
         // Log filter application
         let filterCount = getActiveFilterCount()
-        logger.notice("\(filterCount) \(filterCount == 1 ? "filter" : "filters") applied")
+        logger.notice("\(filterCount) \(filterCount == 1 ? "filter" : "filters") applied with price levels: \(Array(selectedPriceLevels).sorted())")
         
         // Provide haptic feedback
         let generator = UINotificationFeedbackGenerator()
@@ -371,7 +392,7 @@ struct FilterView: View {
         var count = 0
         
         // Count price level filters
-        if selectedPriceLevels.count < 4 {
+        if !allPriceLevelsSelectedLocally {
             count += 1
         }
         
@@ -380,7 +401,7 @@ struct FilterView: View {
             count += 1
         }
         
-        // Count minimum rating filter (not functional yet)
+        // Count minimum rating filter
         if minimumRating > 0 {
             count += 1
         }

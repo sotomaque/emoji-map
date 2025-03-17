@@ -48,6 +48,7 @@ struct PlaceSearchRequest: Codable, Hashable {
     let location: LocationCoordinate
     let bypassCache: Bool?
     let maxResultCount: Int?
+    let minimumRating: Int?
     
     struct LocationCoordinate: Codable, Hashable {
         let latitude: Double
@@ -123,7 +124,8 @@ class PlacesService: PlacesServiceProtocol {
                     longitude: location.longitude
                 ),
                 bypassCache: !useCache,
-                maxResultCount: nil
+                maxResultCount: nil,
+                minimumRating: nil
             )
             
             logger.notice("Fetching nearby places for location: \(location.latitude), \(location.longitude)")
@@ -183,7 +185,8 @@ class PlacesService: PlacesServiceProtocol {
                     longitude: location.longitude
                 ),
                 bypassCache: bypassCache,
-                maxResultCount: nil
+                maxResultCount: nil,
+                minimumRating: nil
             )
             
             logger.notice("Fetching places for categories \(categoryKeys) at location: \(location.latitude), \(location.longitude)")
@@ -239,7 +242,8 @@ class PlacesService: PlacesServiceProtocol {
                 longitude: location.longitude
             ),
             bypassCache: !useCache,
-            maxResultCount: nil
+            maxResultCount: nil,
+            minimumRating: nil
         )
         
         logger.notice("Fetching nearby places for location: \(location.latitude), \(location.longitude)")
@@ -306,6 +310,11 @@ class PlacesService: PlacesServiceProtocol {
             logger.notice("No price levels in request")
         }
         
+        if let minimumRating = requestBody.minimumRating, minimumRating > 0 {
+            filterComponents.append("minimumRating=\(minimumRating)")
+            logger.notice("Sending minimum rating in request: \(minimumRating)")
+        }
+        
         if let radius = requestBody.radius {
             filterComponents.append("radius=\(radius)")
         }
@@ -323,7 +332,8 @@ class PlacesService: PlacesServiceProtocol {
             radius: requestBody.radius,
             location: requestBody.location,
             bypassCache: true,  // Always force bypass cache for filter requests
-            maxResultCount: requestBody.maxResultCount
+            maxResultCount: requestBody.maxResultCount,
+            minimumRating: requestBody.minimumRating
         )
         
         do {

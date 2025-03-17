@@ -219,93 +219,95 @@ struct SettingsSheet: View {
                 .padding(.vertical, 8)
                 
                 // Developer Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Developer")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                        .padding(.bottom, 4)
-                    
-                    // Places Cache Info
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Places Cache")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            
-                            Spacer()
-                            
-                            Text("\(viewModel.places.count) places")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
+                if let user = clerk.user, (user.publicMetadata?["admin"] as? Bool) == true {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Developer")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                            .padding(.bottom, 4)
                         
-                        HStack {
-                            Text("Filtered Places")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
+                        // Places Cache Info
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Places Cache")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                
+                                Spacer()
+                                
+                                Text("\(viewModel.places.count) places")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
                             
-                            Spacer()
+                            HStack {
+                                Text("Filtered Places")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                
+                                Spacer()
+                                
+                                Text("\(viewModel.filteredPlaces.count) places")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
                             
-                            Text("\(viewModel.filteredPlaces.count) places")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
+                            HStack {
+                                Text("Selected Categories")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                
+                                Spacer()
+                                
+                                Text("\(viewModel.selectedCategoryKeys.count) categories")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
                         }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
                         
-                        HStack {
-                            Text("Selected Categories")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            
-                            Spacer()
-                            
-                            Text("\(viewModel.selectedCategoryKeys.count) categories")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
+                        // Clear Cache Button
+                        Button(action: {
+                            viewModel.clearPlaces()
+                            viewModel.placesService.clearCache()
+                            logger.notice("Cache cleared from settings")
+                        }) {
+                            HStack {
+                                Image(systemName: "trash")
+                                    .foregroundColor(.red)
+                                Text("Clear Places Cache")
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
                         }
+                        .buttonStyle(PlainButtonStyle())
+                        
+                        // Refresh Places Button
+                        Button(action: {
+                            viewModel.refreshPlaces(clearExisting: true)
+                            logger.notice("Places refreshed from settings")
+                        }) {
+                            HStack {
+                                Image(systemName: "arrow.clockwise")
+                                    .foregroundColor(.blue)
+                                Text("Refresh Places")
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                     .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
-                    
-                    // Clear Cache Button
-                    Button(action: {
-                        viewModel.clearPlaces()
-                        viewModel.placesService.clearCache()
-                        logger.notice("Cache cleared from settings")
-                    }) {
-                        HStack {
-                            Image(systemName: "trash")
-                                .foregroundColor(.red)
-                            Text("Clear Places Cache")
-                                .fontWeight(.medium)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    // Refresh Places Button
-                    Button(action: {
-                        viewModel.refreshPlaces(clearExisting: true)
-                        logger.notice("Places refreshed from settings")
-                    }) {
-                        HStack {
-                            Image(systemName: "arrow.clockwise")
-                                .foregroundColor(.blue)
-                            Text("Refresh Places")
-                                .fontWeight(.medium)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(PlainButtonStyle())
                 }
-                .padding(.vertical, 8)
                 
                 Spacer()
                 

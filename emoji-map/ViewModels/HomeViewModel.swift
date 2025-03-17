@@ -38,16 +38,26 @@ class HomeViewModel: ObservableObject {
     @Published var minimumRating: Int = 0
     @Published var useLocalRatings: Bool = false
     
+    // Computed property to check if all price levels are selected or none are selected
+    var allPriceLevelsSelected: Bool {
+        // If no price levels are selected, it's the same as all being selected (no filtering)
+        if selectedPriceLevels.isEmpty {
+            return true
+        }
+        
+        // Otherwise, check if all 4 price levels are selected
+        return selectedPriceLevels.count == 4 && 
+               selectedPriceLevels.contains(1) && 
+               selectedPriceLevels.contains(2) && 
+               selectedPriceLevels.contains(3) && 
+               selectedPriceLevels.contains(4)
+    }
+    
     // Computed property to check if there are active filters
     var hasActiveFilters: Bool {
-        // Check if price levels are not all selected and not empty
-        let allPriceLevelsSelected = selectedPriceLevels.count == 4 && 
-                                    selectedPriceLevels.contains(1) && 
-                                    selectedPriceLevels.contains(2) && 
-                                    selectedPriceLevels.contains(3) && 
-                                    selectedPriceLevels.contains(4)
-        
-        let hasPriceLevelFilters = !selectedPriceLevels.isEmpty && !allPriceLevelsSelected
+        // Price level filter is active if not all price levels are selected
+        // (allPriceLevelsSelected handles both empty and all-selected cases)
+        let hasPriceLevelFilters = !allPriceLevelsSelected
         
         // Check if minimum rating filter is active
         let hasRatingFilter = minimumRating > 0
@@ -116,6 +126,7 @@ class HomeViewModel: ObservableObject {
         // Check if user is authenticated
         if let clerkUser = clerk.user {
             logger.notice("User is authenticated with Clerk. User ID: \(clerkUser.id)")
+            logger.notice("User public metadata: \(String(describing: clerkUser.publicMetadata))")
             
             // Set loading state
             isLoadingUser = true
@@ -327,23 +338,18 @@ class HomeViewModel: ObservableObject {
     
     /// Toggle all categories mode
     func toggleAllCategories() {
-        isAllCategoriesMode.toggle()
-        
+        // If already in "All" mode, do nothing (prevent deselection)
         if isAllCategoriesMode {
-            // Clear selected categories when "All" is selected
-            selectedCategoryKeys.removeAll()
-            logger.notice("All categories mode enabled, cleared selected categories")
-        } else {
-            logger.notice("All categories mode disabled")
-            
-            // Log when not in "all" mode
-            if !selectedCategoryKeys.isEmpty {
-                let keys = selectedCategoryKeys.sorted().map { String($0) }.joined(separator: ", ")
-                logger.notice("Not all - Category keys selected: \(keys)")
-            } else {
-                logger.notice("Not all - No specific category keys selected yet")
-            }
+            logger.notice("All categories mode already active, ignoring toggle")
+            return
         }
+        
+        // Otherwise, enable "All" mode
+        isAllCategoriesMode = true
+        
+        // Clear selected categories when "All" is selected
+        selectedCategoryKeys.removeAll()
+        logger.notice("All categories mode enabled, cleared selected categories")
         
         logger.notice("Selected keys: \(self.selectedCategoryKeys)")
         applyFilters()
@@ -412,21 +418,29 @@ class HomeViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            // Check if all price levels are selected (1,2,3,4)
-            let allPriceLevelsSelected = selectedPriceLevels.count == 4 && 
-                                        selectedPriceLevels.contains(1) && 
-                                        selectedPriceLevels.contains(2) && 
-                                        selectedPriceLevels.contains(3) && 
-                                        selectedPriceLevels.contains(4)
-            
-            // If all price levels are selected, treat it as if no price level filter is applied
+            // If all price levels are selected or none are selected, treat it as if no price level filter is applied
             let priceLevelsToUse: [Int]?
-            if selectedPriceLevels.isEmpty || allPriceLevelsSelected {
-                logger.notice("No price level filtering applied (empty or all levels selected)")
+            if allPriceLevelsSelected {
+                logger.notice("No price level filtering applied (all levels selected or none selected)")
                 priceLevelsToUse = nil
             } else {
-                logger.notice("Applying price level filter: \(Array(self.selectedPriceLevels))")
-                priceLevelsToUse = Array(selectedPriceLevels)
+                logger.notice("Applying price level filter: \(Array(self.selectedPriceLevels).sorted())")
+                priceLevelsToUse = Array(selectedPriceLevels).sorted()
+            }
+            
+            // Determine if we should include minimum rating in the request
+            // Only include it when using Google Maps ratings (not local ratings)
+            let minimumRatingToUse: Int?
+            if !useLocalRatings && minimumRating > 0 {
+                minimumRatingToUse = minimumRating
+                logger.notice("Applying Google Maps minimum rating filter server-side: \(self.minimumRating)")
+            } else {
+                minimumRatingToUse = nil
+                if minimumRating > 0 && useLocalRatings {
+                    logger.notice("Using local ratings filter: \(self.minimumRating) (will be applied client-side)")
+                } else {
+                    logger.notice("No rating filter applied")
+                }
             }
             
             // Create request body with filters
@@ -440,7 +454,8 @@ class HomeViewModel: ObservableObject {
                     longitude: location.longitude
                 ),
                 bypassCache: true, // Always bypass cache when applying filters
-                maxResultCount: nil
+                maxResultCount: nil,
+                minimumRating: minimumRatingToUse // Add the minimum rating parameter
             )
             
             logger.notice("Fetching places with filters at location: \(location.latitude), \(location.longitude)")
@@ -459,6 +474,10 @@ class HomeViewModel: ObservableObject {
             // Update places with the filtered results
             self.places = response.results
             self.updateFilteredPlaces()
+            
+            if !useLocalRatings && minimumRating > 0 {
+                logger.notice("Places already filtered by Google Maps rating \(self.minimumRating)+ server-side")
+            }
             
             logger.notice("Successfully fetched \(response.results.count) places with filters")
             
@@ -732,21 +751,27 @@ class HomeViewModel: ObservableObject {
                 }
                 logger.notice("Applied minimum user rating filter (\(self.minimumRating)+ stars): \(filtered.count) places remaining")
             } else {
-                // Filter based on Google ratings
-                filtered = filtered.filter { place in
-                    // If the place has a rating, check if it meets the minimum
-                    // If no rating is available, exclude the place
-                    if let rating = place.rating {
-                        return rating >= Double(minimumRating)
-                    }
-                    return false
-                }
-                logger.notice("Applied minimum Google rating filter (\(self.minimumRating)+ stars): \(filtered.count) places remaining")
+                // For Google Maps ratings, we've already filtered server-side
+                // Only apply client-side filter if we're viewing cached results
+                // that weren't filtered with the current minimum rating
+                logger.notice("Google Maps rating filter already applied server-side, skipping client-side filter")
             }
         }
         
         // Update the filtered places
         filteredPlaces = filtered
         logger.notice("Final filtered places: \(self.filteredPlaces.count) of \(self.places.count) places")
+    }
+    
+    /// Set all price levels (1-4) as selected
+    func selectAllPriceLevels() {
+        selectedPriceLevels = [1, 2, 3, 4]
+        logger.notice("All price levels selected")
+    }
+    
+    /// Clear all price levels and select only the specified level
+    func selectOnlyPriceLevel(_ level: Int) {
+        selectedPriceLevels = [level]
+        logger.notice("Selected only price level \(level)")
     }
 } 

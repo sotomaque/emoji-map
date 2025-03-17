@@ -97,10 +97,12 @@ struct CategorySelector: View {
                         HStack(spacing: 12) {
                             // Add "All" button
                             Button(action: {
+                                // Always provide haptic feedback
+                                selectionFeedback.impactOccurred(intensity: 0.8)
+                                
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     // Toggle all categories instead of just clearing
                                     viewModel.toggleAllCategories()
-                                    selectionFeedback.impactOccurred(intensity: 0.8)
                                 }
                             }) {
                                 AllCategoriesButton(
