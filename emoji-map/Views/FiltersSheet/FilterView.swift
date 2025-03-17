@@ -67,6 +67,8 @@ struct FilterView: View {
     @State private var initialPriceLevels: Set<Int> = []
     // State for new UI elements (not functional yet)
     @State private var showOpenNowOnly: Bool = false
+    // Track initial open now value to detect changes
+    @State private var initialOpenNowOnly: Bool = false
     @State private var minimumRating: Int = 0
     @State private var useLocalRatings: Bool = false
     
@@ -97,7 +99,7 @@ struct FilterView: View {
         let ratingSourceChanged = useLocalRatings != viewModel.useLocalRatings
         
         // Check if open now filter has changed
-        let openNowChanged = showOpenNowOnly != viewModel.showOpenNowOnly
+        let openNowChanged = showOpenNowOnly != initialOpenNowOnly
         
         return priceLevelsChanged || ratingChanged || ratingSourceChanged || openNowChanged
     }
@@ -133,12 +135,18 @@ struct FilterView: View {
     init(viewModel: HomeViewModel) {
         self.viewModel = viewModel
         
-        // Always initialize with all price levels selected for consistent behavior
-        let priceLevels: Set<Int> = [1, 2, 3, 4]
+        // Log the view model's price levels
+        logger.notice("View model price levels: \(Array(viewModel.selectedPriceLevels).sorted()), allPriceLevelsSelected: \(viewModel.allPriceLevelsSelected)")
+        
+        // Initialize price levels from the view model
+        let priceLevels = viewModel.selectedPriceLevels
+        
+        // If the view model has no price levels selected, use all price levels
+        let initialPriceLevels = priceLevels.isEmpty ? Set([1, 2, 3, 4]) : priceLevels
         
         // Initialize state variables
-        _selectedPriceLevels = State(initialValue: priceLevels)
-        _initialPriceLevels = State(initialValue: priceLevels)
+        _selectedPriceLevels = State(initialValue: initialPriceLevels)
+        _initialPriceLevels = State(initialValue: initialPriceLevels)
         
         // Initialize rating filter state from view model
         _minimumRating = State(initialValue: viewModel.minimumRating)
@@ -146,6 +154,9 @@ struct FilterView: View {
         
         // Initialize open now filter state from view model
         _showOpenNowOnly = State(initialValue: viewModel.showOpenNowOnly)
+        _initialOpenNowOnly = State(initialValue: viewModel.showOpenNowOnly)
+        
+        logger.notice("Initialized FilterView with price levels: \(Array(initialPriceLevels).sorted())")
     }
     
     var body: some View {
@@ -211,7 +222,7 @@ struct FilterView: View {
                             .tint(accentColor)
                             .padding(.vertical, 4)
                             .onChange(of: showOpenNowOnly) { oldValue, newValue in
-                                logger.notice("Open Now toggle changed to: \(newValue) (not functional yet)")
+                                logger.notice("Open Now toggle changed from \(oldValue) to \(newValue)")
                             }
                     }
                     
@@ -374,8 +385,11 @@ struct FilterView: View {
     
     // Apply filters and dismiss the sheet
     func applyFilters() {
+        // If no price levels are selected, treat it as all price levels selected
+        let priceLevelsToApply = selectedPriceLevels.isEmpty ? Set([1, 2, 3, 4]) : selectedPriceLevels
+        
         // Update the view model with the selected price levels
-        viewModel.selectedPriceLevels = selectedPriceLevels
+        viewModel.selectedPriceLevels = priceLevelsToApply
         
         // Update the view model with the minimum rating and rating source
         viewModel.minimumRating = minimumRating
@@ -389,7 +403,7 @@ struct FilterView: View {
         
         // Log filter application
         let filterCount = getActiveFilterCount()
-        logger.notice("\(filterCount) \(filterCount == 1 ? "filter" : "filters") applied with price levels: \(Array(selectedPriceLevels).sorted())")
+        logger.notice("\(filterCount) \(filterCount == 1 ? "filter" : "filters") applied with price levels: \(Array(priceLevelsToApply).sorted())")
         
         // Provide haptic feedback
         let generator = UINotificationFeedbackGenerator()

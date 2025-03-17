@@ -70,6 +70,20 @@ class HomeViewModel: ObservableObject {
         return hasPriceLevelFilters || hasRatingFilter || hasOpenNowFilter
     }
     
+    // Computed property to check if we have network-dependent filters
+    var hasNetworkDependentFilters: Bool {
+        // Price level filters require network request
+        let hasPriceLevelFilters = !allPriceLevelsSelected
+        
+        // Open now filter requires network request
+        let hasOpenNowFilter = showOpenNowOnly
+        
+        // Google Maps rating filter requires network request (but not local ratings)
+        let hasGoogleRatingFilter = minimumRating > 0 && !useLocalRatings
+        
+        return hasPriceLevelFilters || hasOpenNowFilter || hasGoogleRatingFilter
+    }
+    
     // Map state
     @Published var visibleRegion: MKCoordinateRegion?
     private var lastFetchedRegion: MKCoordinateRegion?
@@ -266,6 +280,12 @@ class HomeViewModel: ObservableObject {
                     // Otherwise use the regular nearby places endpoint
                     logger.notice("Fetching all nearby places due to region change")
                     fetchNearbyPlaces(at: center)
+                    
+                    // If we have network-dependent filters, also fetch filtered places
+                    if hasNetworkDependentFilters {
+                        // Fetch filtered places with the same location
+                        await fetchPlacesWithFilters(at: center)
+                    }
                 }
             }
         }
@@ -404,6 +424,10 @@ class HomeViewModel: ObservableObject {
             return
         }
         
+        // Reset filteredPlaces when filters change
+        filteredPlaces.removeAll()
+        logger.notice("Reset filteredPlaces due to filter change")
+        
         // Refresh places with the new filters
         Task {
             await fetchPlacesWithFilters(at: location)
@@ -419,6 +443,14 @@ class HomeViewModel: ObservableObject {
         
         isLoading = true
         errorMessage = nil
+        
+        // If we don't have network-dependent filters, just apply local filtering
+        if !hasNetworkDependentFilters {
+            logger.notice("Using local filtering only (no network-dependent filters)")
+            updateFilteredPlaces()
+            isLoading = false
+            return
+        }
         
         do {
             // If all price levels are selected or none are selected, treat it as if no price level filter is applied
@@ -471,12 +503,8 @@ class HomeViewModel: ObservableObject {
             // Log the response details
             logger.notice("Response from API: count=\(response.count), cacheHit=\(response.cacheHit), results.count=\(response.results.count)")
             
-            // Clear existing places before updating with filtered results
-            self.places.removeAll()
-            
-            // Update places with the filtered results
-            self.places = response.results
-            self.updateFilteredPlaces()
+            // Merge new filtered places with existing filtered places
+            mergeFilteredPlaces(response.results)
             
             if !useLocalRatings && minimumRating > 0 {
                 logger.notice("Places already filtered by Google Maps rating \(self.minimumRating)+ server-side")
@@ -536,8 +564,14 @@ class HomeViewModel: ObservableObject {
                 mergePlaces(fetchedPlaces)
                 logger.notice("Fetched \(fetchedPlaces.count) places by categories, total places now: \(self.places.count)")
                 
-                // Apply filters to update filtered places
-                applyFilters()
+                // If we have network-dependent filters, fetch filtered places
+                if hasNetworkDependentFilters {
+                    // Fetch filtered places with the same location
+                    await fetchPlacesWithFilters(at: fetchLocation)
+                } else {
+                    // Otherwise just apply local filtering
+                    updateFilteredPlaces()
+                }
             } catch {
                 // Check if the task was cancelled
                 if Task.isCancelled { return }
@@ -631,8 +665,14 @@ class HomeViewModel: ObservableObject {
                 mergePlaces(fetchedPlaces)
                 logger.notice("Fetched \(fetchedPlaces.count) places, total places now: \(self.places.count)")
                 
-                // Apply filters to update filtered places
-                applyFilters()
+                // If we have network-dependent filters, fetch filtered places
+                if hasNetworkDependentFilters {
+                    // Fetch filtered places with the same location
+                    await fetchPlacesWithFilters(at: coordinate)
+                } else {
+                    // Otherwise just apply local filtering
+                    updateFilteredPlaces()
+                }
                 
                 // Hide loading indicator if it was showing
                 if shouldShowLoading {
@@ -730,6 +770,30 @@ class HomeViewModel: ObservableObject {
         logger.notice("Cleared all places")
     }
     
+    /// Merge new filtered places with existing filtered places, avoiding duplicates
+    private func mergeFilteredPlaces(_ newPlaces: [Place]) {
+        // Create a dictionary of existing filtered places by ID for efficient lookup
+        let existingPlacesById = Dictionary(uniqueKeysWithValues: filteredPlaces.map { ($0.id, $0) })
+        
+        // Count before adding
+        let countBefore = filteredPlaces.count
+        
+        // Add only places that don't already exist
+        for place in newPlaces {
+            if existingPlacesById[place.id] == nil {
+                filteredPlaces.append(place)
+            }
+        }
+        
+        // Log how many new places were added
+        let addedCount = filteredPlaces.count - countBefore
+        if addedCount > 0 {
+            logger.notice("Added \(addedCount) new unique filtered places, total now: \(self.filteredPlaces.count)")
+        } else {
+            logger.notice("No new unique filtered places to add, total remains: \(self.filteredPlaces.count)")
+        }
+    }
+    
     /// Update filtered places based on current places
     private func updateFilteredPlaces() {
         // Start with all places
@@ -744,21 +808,14 @@ class HomeViewModel: ObservableObject {
             logger.notice("Applied favorites filter: \(filtered.count) of \(self.places.count) places")
         }
         
-        // Apply minimum rating filter if enabled
-        if minimumRating > 0 {
-            if useLocalRatings {
-                // Filter based on user's own ratings
-                filtered = filtered.filter { place in
-                    let userRating = userPreferences.getRating(placeId: place.id)
-                    return userRating >= minimumRating
-                }
-                logger.notice("Applied minimum user rating filter (\(self.minimumRating)+ stars): \(filtered.count) places remaining")
-            } else {
-                // For Google Maps ratings, we've already filtered server-side
-                // Only apply client-side filter if we're viewing cached results
-                // that weren't filtered with the current minimum rating
-                logger.notice("Google Maps rating filter already applied server-side, skipping client-side filter")
+        // Apply minimum rating filter if enabled and using local ratings
+        if minimumRating > 0 && useLocalRatings {
+            // Filter based on user's own ratings
+            filtered = filtered.filter { place in
+                let userRating = userPreferences.getRating(placeId: place.id)
+                return userRating >= minimumRating
             }
+            logger.notice("Applied minimum user rating filter (\(self.minimumRating)+ stars): \(filtered.count) places remaining")
         }
         
         // Update the filtered places
