@@ -104,7 +104,7 @@ struct Rating: Codable, Identifiable {
 }
 
 /// Model representing a user from the API
-struct User: Codable, Identifiable {
+struct AppUser: Codable, Identifiable {
     let id: String
     let email: String
     let username: String?
@@ -267,7 +267,7 @@ struct UserResponse: Codable {
     let user: UserData
     
     // Convert the response to a User model
-    var toUser: User {
+    var toUser: AppUser {
         return user.toUser
     }
 }
@@ -286,7 +286,7 @@ struct UserData: Codable {
     let ratings: [RatingResponse]?
     
     // Convert to User model
-    var toUser: User {
+    var toUser: AppUser {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         
@@ -299,7 +299,7 @@ struct UserData: Codable {
         // Convert rating responses to Rating models
         let ratingModels = ratings?.map { $0.toRating } ?? []
         
-        return User(
+        return AppUser(
             id: id,
             email: email,
             username: username,

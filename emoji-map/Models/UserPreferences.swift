@@ -112,25 +112,39 @@ class UserPreferences: ObservableObject {
         // Create a background task to update the database
         Task.detached(priority: .background) {
             do {
-                // Get the network service from the service container
+                // Get the network service and clerk service from the service container
                 let networkService = await ServiceContainer.shared.networkService
+                let clerkService = await ServiceContainer.shared.clerkService
                 
-                // Create the request body
+                // Get session token for authorization
+                var sessionToken: String? = nil
+                do {
+                    sessionToken = try await clerkService.getSessionToken()
+                    if let token = sessionToken {
+                        self.logger.notice("Retrieved session token for favorite update: \(String(token.prefix(15)))...")
+                    } else {
+                        self.logger.notice("No session token available despite user being authenticated")
+                    }
+                } catch {
+                    self.logger.error("Error retrieving session token: \(error.localizedDescription)")
+                }
+                
+                // Create the request body without userId (will be derived from token on server)
                 let favoriteRequest = FavoriteRequest(
-                    userId: userId,
+                    userId: userId,  // Keep userId for now for backward compatibility
                     placeId: placeId,
                     isFavorite: isFavorite
                 )
                 
                 // Log the request
-                self.logger.notice("Sending favorite update to API: userId=\(userId), placeId=\(placeId), isFavorite=\(isFavorite)")
+                self.logger.notice("Sending favorite update to API: placeId=\(placeId), isFavorite=\(isFavorite)")
                 
-                // Make the request to update the favorite status
+                // Make the request to update the favorite status with the auth token
                 let _: FavoriteResponse = try await networkService.post(
                     endpoint: .favorite,
                     body: favoriteRequest,
                     queryItems: nil,
-                    authToken: nil
+                    authToken: sessionToken
                 )
                 
                 // Log success
@@ -200,25 +214,39 @@ class UserPreferences: ObservableObject {
         // Create a background task to update the database
         Task.detached(priority: .background) {
             do {
-                // Get the network service from the service container
+                // Get the network service and clerk service from the service container
                 let networkService = await ServiceContainer.shared.networkService
+                let clerkService = await ServiceContainer.shared.clerkService
                 
-                // Create the request body
+                // Get session token for authorization
+                var sessionToken: String? = nil
+                do {
+                    sessionToken = try await clerkService.getSessionToken()
+                    if let token = sessionToken {
+                        self.logger.notice("Retrieved session token for rating update: \(String(token.prefix(15)))...")
+                    } else {
+                        self.logger.notice("No session token available despite user being authenticated")
+                    }
+                } catch {
+                    self.logger.error("Error retrieving session token: \(error.localizedDescription)")
+                }
+                
+                // Create the request body without userId (will be derived from token on server)
                 let ratingRequest = RatingRequest(
-                    userId: userId,
+                    userId: userId,  // Keep userId for now for backward compatibility
                     placeId: placeId,
                     rating: rating
                 )
                 
                 // Log the request
-                self.logger.notice("Sending rating update to API: userId=\(userId), placeId=\(placeId), rating=\(rating)")
+                self.logger.notice("Sending rating update to API: placeId=\(placeId), rating=\(rating)")
                 
-                // Make the request to update the rating
+                // Make the request to update the rating with the auth token
                 let _: RatingResponse = try await networkService.post(
                     endpoint: .rating,
                     body: ratingRequest,
                     queryItems: nil,
-                    authToken: nil
+                    authToken: sessionToken
                 )
                 
                 // Log success

@@ -11,6 +11,62 @@ import MapKit
 import Combine
 import os.log
 import Clerk
+import CryptoKit
+
+/// Protocol abstracting the Clerk functionality we need for testing
+protocol ClerkService {
+    var isLoaded: Bool { get }
+    var user: User? { get }
+    var userId: String? { get }
+    var isAdmin: Bool { get }
+    
+    func getSessionToken() async throws -> String?
+    func getSessionId() async throws -> String?
+}
+
+/// Default implementation that uses the real Clerk.shared
+class DefaultClerkService: ClerkService {
+    @MainActor
+    var isLoaded: Bool {
+        return Clerk.shared.isLoaded
+    }
+    
+    @MainActor
+    var user: User? {
+        return Clerk.shared.user
+    }
+    
+    @MainActor
+    var userId: String? {
+        return Clerk.shared.user?.id
+    }
+    
+    @MainActor
+    var isAdmin: Bool {
+        // Check if the user exists and has admin: true in publicMetadata
+        return Clerk.shared.user?.publicMetadata?["admin"]?.boolValue ?? false
+    }
+    
+    @MainActor
+    func getSessionToken() async throws -> String? {
+        guard let session = Clerk.shared.session else {
+            print("No active session")
+            return nil
+        }
+        let tokenResource = try await session.getToken()
+        return tokenResource?.jwt
+    }
+    
+    @MainActor
+    func getSessionId() async throws -> String? {
+        guard let session = Clerk.shared.session else {
+            print("No active session")
+            return nil
+        }
+        // Return the session ID
+        return session.id
+    }
+}
 
 @MainActor
 class HomeViewModel: ObservableObject {
@@ -25,8 +81,9 @@ class HomeViewModel: ObservableObject {
     @Published var isPlaceDetailSheetPresented = false
     
     // User data
-    @Published var currentUser: User?
+    @Published var currentUser: AppUser?
     @Published var isLoadingUser = false
+    @Published var isAdmin: Bool = false
     
     // Category selection state
     @Published var selectedCategoryKeys: Set<Int> = []
@@ -106,16 +163,38 @@ class HomeViewModel: ObservableObject {
     
     // MARK: - Initialization
     
-    init(placesService: PlacesServiceProtocol, userPreferences: UserPreferences) {
+    init(placesService: PlacesServiceProtocol, 
+         userPreferences: UserPreferences, 
+         networkService: NetworkServiceProtocol? = nil,
+         clerkService: ClerkService = DefaultClerkService()) {
         self.placesService = placesService
         self.userPreferences = userPreferences
         logger.notice("HomeViewModel initialized")
         
+        // Set the initial admin status
+        self.isAdmin = clerkService.isAdmin
+        logger.notice("Initial admin status: \(self.isAdmin)")
+        
         setupLocationManager()
+        
+        // Subscribe to changes in userPreferences.placeRatings
+        userPreferences.$placeRatings
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                
+                // If we're using local ratings for filtering, update filtered places when ratings change
+                if self.useLocalRatings && self.minimumRating > 0 {
+                    self.logger.notice("User ratings changed - updating filtered places to reflect new ratings")
+                    Task { @MainActor in
+                        self.updateFilteredPlaces()
+                    }
+                }
+            }
+            .store(in: &cancellables)
         
         // Fetch user data in the background
         Task {
-            await fetchUserData()
+            await fetchUserData(networkService: networkService, clerkService: clerkService)
         }
     }
     
@@ -128,11 +207,11 @@ class HomeViewModel: ObservableObject {
     // MARK: - Public Methods
     
     /// Fetch user data from the API
-    func fetchUserData() async {
+    func fetchUserData(networkService: NetworkServiceProtocol? = nil, clerkService: ClerkService? = nil) async {
         logger.notice("Checking for authenticated user")
         
-        // Get Clerk instance
-        let clerk = Clerk.shared
+        // Get Clerk instance or use the provided one
+        let clerk = clerkService ?? DefaultClerkService()
         
         // Make sure Clerk is fully loaded
         if !clerk.isLoaded {
@@ -140,28 +219,35 @@ class HomeViewModel: ObservableObject {
             return
         }
         
+        // Update admin status
+        isAdmin = clerk.isAdmin
+        logger.notice("Updated admin status: \(self.isAdmin)")
+        
         // Check if user is authenticated
-        if let clerkUser = clerk.user {
-            logger.notice("User is authenticated with Clerk. User ID: \(clerkUser.id)")
-            logger.notice("User public metadata: \(String(describing: clerkUser.publicMetadata))")
+        if let userId = clerk.userId {
+            logger.notice("User is authenticated with Clerk. User ID: \(userId)")
             
             // Set loading state
             isLoadingUser = true
             
             do {
-                // Get the network service from the service container
-                let networkService = ServiceContainer.shared.networkService
+                // Get the network service from the service container or use the provided one
+                let networkService = networkService ?? ServiceContainer.shared.networkService
                 
-                // Create query items with the user ID
-                let queryItems = [URLQueryItem(name: "userId", value: clerkUser.id)]
+                // Get the session token for authentication
+                guard let sessionToken = try await clerk.getSessionToken() else {
+                    logger.error("No session token available for authentication")
+                    isLoadingUser = false
+                    return
+                }
                 
-                logger.notice("Making request to /api/user with userId: \(clerkUser.id)")
+                logger.notice("Making authenticated request to /api/user with Bearer token")
                 
-                // Make the request to the user endpoint with the user ID
+                // Make the request to the user endpoint with token-based authentication
                 let userResponse: UserResponse = try await networkService.fetch(
                     endpoint: .user,
-                    queryItems: queryItems,
-                    authToken: nil
+                    queryItems: nil,
+                    authToken: sessionToken
                 )
                 
                 // Log the raw response structure
@@ -224,6 +310,72 @@ class HomeViewModel: ObservableObject {
             // Clear any existing user data
             currentUser = nil
         }
+    }
+    
+    /// Handle sign-in with Apple credentials
+    /// This method moves the sign-in logic from the SettingsSheet to the ViewModel
+    func signInWithApple(idToken: String) async throws {
+        logger.notice("Attempting to authenticate with Clerk using Apple ID token")
+        do {
+            // Use the standard authenticateWithIdToken method
+            try await SignIn.authenticateWithIdToken(provider: .apple, idToken: idToken)
+            logger.notice("User signed in with Apple successfully")
+            
+            // Fetch user data which will sync favorites with API
+            await fetchUserData()
+            
+            return
+        } catch let clerkError {
+            logger.error("Clerk authentication error: \(clerkError.localizedDescription)")
+            throw clerkError
+        }
+    }
+    
+    /// Generate a secure random nonce for Apple Sign In
+    /// This method is moved from SettingsSheet to make it reusable and keep auth logic in ViewModel
+    func generateRandomNonce(length: Int = 32) -> String {
+        precondition(length > 0)
+        let charset: [Character] =
+        Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        var remainingLength = length
+        
+        while remainingLength > 0 {
+            let randoms: [UInt8] = (0 ..< 16).map { _ in
+                var random: UInt8 = 0
+                let errorCode = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+                if errorCode != errSecSuccess {
+                    logger.error("Unable to generate nonce. SecRandomCopyBytes failed with OSStatus \(errorCode)")
+                    fatalError("Unable to generate random nonce: \(errorCode)")
+                }
+                return random
+            }
+            
+            randoms.forEach { random in
+                if remainingLength == 0 {
+                    return
+                }
+                
+                if random < charset.count {
+                    result.append(charset[Int(random)])
+                    remainingLength -= 1
+                }
+            }
+        }
+        
+        return result
+    }
+    
+    /// Hash a string using SHA256
+    /// This method is moved from SettingsSheet to make it reusable and keep auth logic in ViewModel
+    func sha256(_ input: String) -> String {
+        let inputData = Data(input.utf8)
+        let hashedData = SHA256.hash(data: inputData)
+        let hashString = hashedData.compactMap {
+            String(format: "%02x", $0)
+        }.joined()
+        
+        return hashString
     }
     
     /// Setup location manager and handle location updates
@@ -551,9 +703,10 @@ class HomeViewModel: ObservableObject {
         // Create a new fetch task
         fetchTask = Task {
             do {
+                let categoryKeysArray = Array(selectedCategoryKeys) 
                 let fetchedPlaces = try await placesService.fetchPlacesByCategories(
                     location: fetchLocation,
-                    categoryKeys: Array(selectedCategoryKeys),
+                    categoryKeys: categoryKeysArray,
                     bypassCache: isSuperZoomedIn // Add bypassCache parameter
                 )
                 
@@ -794,33 +947,67 @@ class HomeViewModel: ObservableObject {
         }
     }
     
-    /// Update filtered places based on current places
-    private func updateFilteredPlaces() {
+    /// Update the filtered places based on current filter settings
+    public func updateFilteredPlaces() {
         // Start with all places
         var filtered = places
         
         // Apply favorites filter if enabled
         if showFavoritesOnly {
-            let favoritePlaceIds = userPreferences.favoritePlaceIds
-            filtered = filtered.filter { place in
-                return favoritePlaceIds.contains(place.id)
-            }
-            logger.notice("Applied favorites filter: \(filtered.count) of \(self.places.count) places")
+            filtered = filtered.filter { userPreferences.isFavorite(placeId: $0.id) }
+            logger.notice("Filtered to \(filtered.count) favorite places")
         }
         
-        // Apply minimum rating filter if enabled and using local ratings
-        if minimumRating > 0 && useLocalRatings {
-            // Filter based on user's own ratings
+        // Apply category filter if not in all categories mode
+        if !isAllCategoriesMode && !selectedCategoryKeys.isEmpty {
             filtered = filtered.filter { place in
-                let userRating = userPreferences.getRating(placeId: place.id)
-                return userRating >= minimumRating
+                // Check if the place has any emoji with matching category
+                place.emoji.contains(where: { character in
+                    let singleEmoji = String(character)
+                    if let key = CategoryMappings.getKeyForEmoji(singleEmoji) {
+                        return selectedCategoryKeys.contains(key)
+                    }
+                    return false
+                })
             }
-            logger.notice("Applied minimum user rating filter (\(self.minimumRating)+ stars): \(filtered.count) places remaining")
+            logger.notice("Filtered to \(filtered.count) places with selected categories")
         }
         
-        // Update the filtered places
+        // Apply rating filter if set
+        if minimumRating > 0 {
+            if useLocalRatings {
+                // Use local user ratings
+                filtered = filtered.filter { place in
+                    let userRating = userPreferences.getRating(placeId: place.id)
+                    return Double(userRating) >= Double(self.minimumRating)
+                }
+                logger.notice("Filtered to \(filtered.count) places with local rating >= \(self.minimumRating)")
+            } else {
+                // Use Google ratings
+                filtered = filtered.filter { place in 
+                    if let rating = place.rating {
+                        return rating >= Double(self.minimumRating)
+                    }
+                    return false
+                }
+                logger.notice("Filtered to \(filtered.count) places with Google rating >= \(self.minimumRating)")
+            }
+        }
+        
+        // Apply price level filter if any are selected (and not all are selected)
+        if !allPriceLevelsSelected {
+            filtered = filtered.filter { place in
+                if let priceLevel = place.priceLevel {
+                    return selectedPriceLevels.contains(priceLevel)
+                }
+                // If no price level is specified, include it if price level 1 is selected
+                return selectedPriceLevels.contains(1)
+            }
+            logger.notice("Filtered to \(filtered.count) places with selected price levels")
+        }
+        
+        // Set the filtered places
         filteredPlaces = filtered
-        logger.notice("Final filtered places: \(self.filteredPlaces.count) of \(self.places.count) places")
     }
     
     /// Set all price levels (1-4) as selected
@@ -833,5 +1020,32 @@ class HomeViewModel: ObservableObject {
     func selectOnlyPriceLevel(_ level: Int) {
         selectedPriceLevels = [level]
         logger.notice("Selected only price level \(level)")
+    }
+    
+    /// Recommend a random place from the filtered places list
+    @MainActor
+    public func recommendRandomPlace() {
+        if filteredPlaces.isEmpty {
+            logger.notice("Cannot recommend a place: No filtered places available")
+            return
+        }
+        
+        // Select a random place from the filtered places
+        if let randomPlace = filteredPlaces.randomElement() {
+            logger.notice("Recommending random place: \(randomPlace.displayName ?? "Unknown")")
+            selectedPlace = randomPlace
+            isPlaceDetailSheetPresented = true
+        } else {
+            logger.error("Failed to select a random place even though filtered places is not empty")
+        }
+    }
+    
+    /// Updates the filtered places after a rating change (mainly used for testing)
+    @MainActor
+    public func updateFilteredPlacesAfterRatingChange() {
+        if useLocalRatings && minimumRating > 0 {
+            logger.notice("Manually updating filtered places after rating change")
+            updateFilteredPlaces()
+        }
     }
 } 

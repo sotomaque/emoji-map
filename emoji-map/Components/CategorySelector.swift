@@ -246,7 +246,7 @@ struct CategorySelector: View {
                     isShuffleActive = true
                     
                     // Recommend a random place
-                    recommendRandomPlace()
+                    viewModel.recommendRandomPlace()
                     
                     // Reset shuffle animation after a delay
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -268,29 +268,6 @@ struct CategorySelector: View {
         .padding(.horizontal, 12)
         .opacity(viewModel.isLoading ? 0.8 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
-    }
-    
-    // MARK: - Actions
-    
-    private func recommendRandomPlace() {
-        // Get the filtered places from the view model
-        let places = viewModel.filteredPlaces
-        
-        // Check if we have any places to recommend
-        guard !places.isEmpty else {
-            logger.notice("Cannot recommend a random place: No places available")
-            return
-        }
-        
-        // Select a random place from the filtered places
-        if let randomPlace = places.randomElement() {
-            logger.notice("Recommending a random place: \(randomPlace.id) (\(randomPlace.emoji))")
-            
-            // Select the place and show its detail sheet
-            viewModel.selectPlace(randomPlace)
-        } else {
-            logger.notice("Failed to select a random place")
-        }
     }
 }
 
