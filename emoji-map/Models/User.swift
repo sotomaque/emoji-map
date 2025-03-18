@@ -324,25 +324,16 @@ struct EmptyResponse: Codable {
 
 /// Model for favorite request to the API
 struct FavoriteRequest: Codable {
-    let userId: String
     let placeId: String
     let isFavorite: Bool
-    
-    enum CodingKeys: String, CodingKey {
-        case userId
-        case placeId
-        case isFavorite
-    }
 }
 
 /// Model for rating request to the API
 struct RatingRequest: Codable {
-    let userId: String
     let placeId: String
     let rating: Int
     
     enum CodingKeys: String, CodingKey {
-        case userId
         case placeId
         case rating
     }

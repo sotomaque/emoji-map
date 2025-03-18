@@ -120,18 +120,20 @@ class UserPreferences: ObservableObject {
                 var sessionToken: String? = nil
                 do {
                     sessionToken = try await clerkService.getSessionToken()
-                    if let token = sessionToken {
-                        self.logger.notice("Retrieved session token for favorite update: \(String(token.prefix(15)))...")
+                    if let _ = sessionToken {
+                        self.logger.notice("Retrieved session token for favorite update")
                     } else {
                         self.logger.notice("No session token available despite user being authenticated")
+                        self.logger.error("Skipping favorite update as session token is required for API authentication")
+                        return // Exit early if no token available
                     }
                 } catch {
                     self.logger.error("Error retrieving session token: \(error.localizedDescription)")
+                    self.logger.error("Skipping favorite update as session token is required for API authentication")
+                    return // Exit early if error occurs while getting token
                 }
-                
-                // Create the request body without userId (will be derived from token on server)
+
                 let favoriteRequest = FavoriteRequest(
-                    userId: userId,  // Keep userId for now for backward compatibility
                     placeId: placeId,
                     isFavorite: isFavorite
                 )
@@ -222,18 +224,20 @@ class UserPreferences: ObservableObject {
                 var sessionToken: String? = nil
                 do {
                     sessionToken = try await clerkService.getSessionToken()
-                    if let token = sessionToken {
-                        self.logger.notice("Retrieved session token for rating update: \(String(token.prefix(15)))...")
+                    if let _ = sessionToken {
+                        self.logger.notice("Retrieved session token for rating update")
                     } else {
                         self.logger.notice("No session token available despite user being authenticated")
+                        self.logger.error("Skipping rating update as session token is required for API authentication")
+                        return // Exit early if no token available
                     }
                 } catch {
                     self.logger.error("Error retrieving session token: \(error.localizedDescription)")
+                    self.logger.error("Skipping rating update as session token is required for API authentication")
+                    return // Exit early if error occurs while getting token
                 }
-                
-                // Create the request body without userId (will be derived from token on server)
+          
                 let ratingRequest = RatingRequest(
-                    userId: userId,  // Keep userId for now for backward compatibility
                     placeId: placeId,
                     rating: rating
                 )
