@@ -221,104 +221,100 @@ struct SettingsSheet: View {
                 
                 
                 // Developer Section
-                if let user = clerk.user, let metadata = user.publicMetadata {
-                    // Check if the admin key exists and is true
-                    let isAdmin = metadata["admin"]?.boolValue ?? false
-                    if isAdmin {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Developer")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-                                .padding(.bottom, 4)
-                            
-                            // Places Cache Info
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Places Cache")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                    
-                                    Spacer()
-                                    
-                                    Text("\(viewModel.places.count) places")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
+                if viewModel.isAdmin {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Developer")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                            .padding(.bottom, 4)
+                        
+                        // Places Cache Info
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Places Cache")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
                                 
-                                HStack {
-                                    Text("Filtered Places")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                    
-                                    Spacer()
-                                    
-                                    Text("\(viewModel.filteredPlaces.count) places")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
+                                Spacer()
                                 
-                                HStack {
-                                    Text("Selected Categories")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                    
-                                    Spacer()
-                                    
-                                    Text("\(viewModel.selectedCategoryKeys.count) categories")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
+                                Text("\(viewModel.places.count) places")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
                             }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
                             
-                            // Clear Cache Button
-                            Button(action: {
-                                viewModel.clearPlaces()
-                                viewModel.placesService.clearCache()
-                                logger.notice("Cache cleared from settings")
-                            }) {
-                                HStack {
-                                    Image(systemName: "trash")
-                                        .foregroundColor(.red)
-                                    Text("Clear Places Cache")
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color(.systemGray6))
-                                .cornerRadius(8)
+                            HStack {
+                                Text("Filtered Places")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                
+                                Spacer()
+                                
+                                Text("\(viewModel.filteredPlaces.count) places")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
                             }
-                            .buttonStyle(PlainButtonStyle())
                             
-                            // Refresh Places Button
-                            Button(action: {
-                                viewModel.refreshPlaces(clearExisting: true)
-                                logger.notice("Places refreshed from settings")
-                            }) {
-                                HStack {
-                                    Image(systemName: "arrow.clockwise")
-                                        .foregroundColor(.blue)
-                                    Text("Refresh Places")
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color(.systemGray6))
-                                .cornerRadius(8)
+                            HStack {
+                                Text("Selected Categories")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                
+                                Spacer()
+                                
+                                Text("\(viewModel.selectedCategoryKeys.count) categories")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
                             }
-                            .buttonStyle(PlainButtonStyle())
                         }
                         .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        
+                        // Clear Cache Button
+                        Button(action: {
+                            viewModel.clearPlaces()
+                            viewModel.placesService.clearCache()
+                            logger.notice("Cache cleared from settings")
+                        }) {
+                            HStack {
+                                Image(systemName: "trash")
+                                    .foregroundColor(.red)
+                                Text("Clear Places Cache")
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        
+                        // Refresh Places Button
+                        Button(action: {
+                            viewModel.refreshPlaces(clearExisting: true)
+                            logger.notice("Places refreshed from settings")
+                        }) {
+                            HStack {
+                                Image(systemName: "arrow.clockwise")
+                                    .foregroundColor(.blue)
+                                Text("Refresh Places")
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
+                    .padding(.vertical, 8)
                 }
                 
                 Spacer()
                 
                 // Version info
-                Text("Version 1.0.0 (Build 42)")
+                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown") (Build \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"))")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -357,49 +353,17 @@ struct SettingsSheet: View {
     
     // MARK: - Nonce Generation
     
-    // Adapted from Apple's example: https://developer.apple.com/documentation/authenticationservices/implementing_user_authentication_with_sign_in_with_apple
-    private func randomNonceString(length: Int = 32) -> String {
-        precondition(length > 0)
-        let charset: [Character] =
-        Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
-        var result = ""
-        var remainingLength = length
-        
-        while remainingLength > 0 {
-            let randoms: [UInt8] = (0 ..< 16).map { _ in
-                var random: UInt8 = 0
-                let errorCode = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
-                if errorCode != errSecSuccess {
-                    logger.error("Unable to generate nonce. SecRandomCopyBytes failed with OSStatus \(errorCode)")
-                    fatalError("Unable to generate random nonce: \(errorCode)")
-                }
-                return random
-            }
-            
-            randoms.forEach { random in
-                if remainingLength == 0 {
-                    return
-                }
-                
-                if random < charset.count {
-                    result.append(charset[Int(random)])
-                    remainingLength -= 1
-                }
-            }
-        }
-        
-        return result
+    // Change from private to internal for testing
+    func randomNonceString(length: Int = 32) -> String {
+        // Use the method that was moved to HomeViewModel
+        return viewModel.generateRandomNonce(length: length)
     }
     
+    // Change from private to internal for testing
     // Hashes a string using SHA256
-    private func sha256(_ input: String) -> String {
-        let inputData = Data(input.utf8)
-        let hashedData = SHA256.hash(data: inputData)
-        let hashString = hashedData.compactMap {
-            String(format: "%02x", $0)
-        }.joined()
-        
-        return hashString
+    func sha256(_ input: String) -> String {
+        // Use the method that was moved to HomeViewModel
+        return viewModel.sha256(input)
     }
     
     // Handle Sign in with Apple completion
@@ -466,14 +430,9 @@ struct SettingsSheet: View {
                 logger.notice("Successfully extracted identity token from Apple credential")
                 logger.notice("Token prefix: \(String(idToken.prefix(15)))...")
                 
-                // Authenticate with Clerk
-                logger.notice("Attempting to authenticate with Clerk using Apple ID token")
+                // Use the HomeViewModel method for sign-in
                 do {
-                    // Use the standard authenticateWithIdToken method
-                    try await SignIn.authenticateWithIdToken(provider: .apple, idToken: idToken)
-                    logger.notice("User signed in with Apple successfully")
-                    // Fetch user data which will sync favorites with API
-                    await viewModel.fetchUserData()
+                    try await signInWithIdentityToken(idToken)
                     isAppleSignInLoading = false
                 } catch let clerkError {
                     logger.error("Clerk authentication error: \(clerkError.localizedDescription)")
@@ -483,37 +442,23 @@ struct SettingsSheet: View {
                 }
                 
             case .failure(let error):
-                // Handle specific error cases
-                logger.error("Apple Sign In failed with error: \(error.localizedDescription)")
-                
-                if let authError = error as? ASAuthorizationError {
-                    switch authError.code {
-                    case .canceled:
-                        logger.notice("User canceled Sign in with Apple")
-                        // User canceled, no need to show error
-                        isAppleSignInLoading = false
-                        return
-                    case .unknown:
-                        appleSignInError = "An unknown error occurred (code: \(authError.code.rawValue))"
-                        logger.error("Unknown Apple Sign In error with code: \(authError.code.rawValue)")
-                    case .invalidResponse:
-                        appleSignInError = "Invalid response from Apple"
-                    case .notHandled:
-                        appleSignInError = "Request not handled"
-                    case .failed:
-                        appleSignInError = "Authorization failed: \(error.localizedDescription)"
-                    default:
-                        appleSignInError = "Error \(authError.code.rawValue): \(error.localizedDescription)"
-                    }
-                } else {
-                    appleSignInError = "Error: \(error.localizedDescription)"
-                }
-                
-                logger.error("Sign in with Apple error: \(error.localizedDescription)")
+                logger.error("Apple Sign In failed: \(error.localizedDescription)")
+                appleSignInError = "Sign in failed: \(error.localizedDescription)"
                 showAppleSignInError = true
                 isAppleSignInLoading = false
             }
         }
+    }
+    
+    /// Helper method for testing and code organization
+    /// Signs in with an identity token and fetches user data
+    @MainActor
+    func signInWithIdentityToken(_ idToken: String) async throws {
+        // Use the HomeViewModel method for sign-in
+        try await viewModel.signInWithApple(idToken: idToken)
+        
+        // After successful sign-in, fetch user data
+        await viewModel.fetchUserData()
     }
 }
 

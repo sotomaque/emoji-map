@@ -176,7 +176,7 @@ class PlacesService: PlacesServiceProtocol {
         do {
             // Create request body
             let requestBody = PlaceSearchRequest(
-                keys: categoryKeys,
+                keys: nil,
                 openNow: nil,
                 priceLevels: nil,
                 radius: 5000, // Default radius

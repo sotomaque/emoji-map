@@ -21,10 +21,16 @@ class ServiceContainer {
     let networkService: NetworkServiceProtocol
     let placesService: PlacesServiceProtocol
     let locationManager: LocationManager
+    let clerkService: ClerkService
     
     // MARK: - View Models
     lazy var homeViewModel: HomeViewModel = {
-        return HomeViewModel(placesService: placesService, userPreferences: userPreferences)
+        return HomeViewModel(
+            placesService: placesService, 
+            userPreferences: userPreferences, 
+            networkService: networkService,
+            clerkService: clerkService
+        )
     }()
     
     // MARK: - Initialization
@@ -39,6 +45,7 @@ class ServiceContainer {
         // Initialize dependent services
         placesService = PlacesService(networkService: networkService)
         locationManager = LocationManager()
+        clerkService = DefaultClerkService()
         
         // Log initialization
         logger.notice("ServiceContainer initialized with all services")
