@@ -17,7 +17,7 @@ struct Configuration {
     
     /// Toggle to use local development server
     /// Set this to true to use localhost:3000 instead of production URL
-    static let IS_DEV_SERVER = false
+    static let IS_DEV_SERVER = true
     
     
     // currently set to my branch emoji-map-next-git-fix-geobounds-enriques-projects-b7c71f69.vercel.app

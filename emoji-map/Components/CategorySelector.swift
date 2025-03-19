@@ -288,8 +288,20 @@ struct CategorySelector: View {
 
 // Mock service for preview
 private class MockPlacesService: PlacesServiceProtocol {
-    @MainActor func fetchNearbyPlaces(location: CLLocationCoordinate2D, useCache: Bool) async throws -> [Place] {
+    func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int], bypassCache: Bool, radius: Int) async throws -> [Place] {
         return []
+    }
+    
+    func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int], bypassCache: Bool, openNow: Bool?, priceLevels: [Int]?, minimumRating: Int?, radius: Int) async throws -> [Place] {
+        return []
+    }
+    
+    func fetchNearbyPlaces(location: CLLocationCoordinate2D, useCache: Bool, radius: Int) async throws -> [Place] {
+        []
+    }
+    
+    func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int], bypassCache: Bool, openNow: Bool?, priceLevels: [Int]?, minimumRating: Int?) async throws -> [Place] {
+        []
     }
     
     @MainActor func fetchNearbyPlacesPublisher(location: CLLocationCoordinate2D, useCache: Bool) -> AnyPublisher<[Place], Error> {

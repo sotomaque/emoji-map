@@ -463,26 +463,42 @@ struct SettingsSheet: View {
 }
 
 #Preview {
-    // Create a mock HomeViewModel for the preview
-    let mockService = PreviewMockPlacesService()
-    let mockUserPreferences = UserPreferences(userDefaults: UserDefaults.standard)
-    let viewModel = HomeViewModel(placesService: mockService, userPreferences: mockUserPreferences)
+    // Setup
+    let mockViewModel = {
+        let mockService = PreviewMockPlacesService()
+        let mockUserPreferences = UserPreferences(userDefaults: UserDefaults.standard)
+        let viewModel = HomeViewModel(placesService: mockService, userPreferences: mockUserPreferences)
+        
+        // Configure mock data
+        viewModel.setPlaces([
+            Place(id: "1", emoji: "🍕", location: Place.Location(latitude: 37.7749, longitude: -122.4194)),
+            Place(id: "2", emoji: "🍺", location: Place.Location(latitude: 37.7749, longitude: -122.4194))
+        ])
+        viewModel.selectedCategoryKeys = [1]
+        
+        return viewModel
+    }()
     
-    // Add some mock data
-    viewModel.places = [
-        Place(id: "1", emoji: "🍕", location: Place.Location(latitude: 37.7749, longitude: -122.4194)),
-        Place(id: "2", emoji: "🍺", location: Place.Location(latitude: 37.7749, longitude: -122.4194))
-    ]
-    viewModel.filteredPlaces = [viewModel.places[0]]
-    viewModel.selectedCategoryKeys = [1]
-    
-    return SettingsSheet(viewModel: viewModel)
+    // Return the view
+    return SettingsSheet(viewModel: mockViewModel)
         .environment(Clerk.shared)
 }
 
 // Mock service for preview
 private class PreviewMockPlacesService: PlacesServiceProtocol {
-    @MainActor func fetchNearbyPlaces(location: CLLocationCoordinate2D, useCache: Bool) async throws -> [Place] {
+    func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int], bypassCache: Bool, radius: Int) async throws -> [Place] {
+        return []
+    }
+    
+    func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int], bypassCache: Bool, openNow: Bool?, priceLevels: [Int]?, minimumRating: Int?, radius: Int) async throws -> [Place] {
+        return []
+    }
+    
+    func fetchNearbyPlaces(location: CLLocationCoordinate2D, useCache: Bool, radius: Int) async throws -> [Place] {
+        return []
+    }
+    
+    func fetchPlacesByCategories(location: CLLocationCoordinate2D, categoryKeys: [Int], bypassCache: Bool, openNow: Bool?, priceLevels: [Int]?, minimumRating: Int?) async throws -> [Place] {
         return []
     }
     
