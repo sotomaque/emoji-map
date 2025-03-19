@@ -22,13 +22,36 @@ struct Home: View {
     
     // Computed property to determine which places list to display
     private var placesToDisplay: [Place] {
-        // If we have network-dependent filters, use filteredPlaces
-        if viewModel.hasNetworkDependentFilters {
-            logger.notice("Using filteredPlaces list for display (network-dependent filters active)")
-            return viewModel.filteredPlaces
-        } else if viewModel.showFavoritesOnly || (viewModel.minimumRating > 0 && viewModel.useLocalRatings) {
-            // If we have local-only filters (favorites or local ratings), use filteredPlaces
-            logger.notice("Using filteredPlaces list for display (local filters active)")
+        // When any filter is active, including category selection, use the filtered places
+        if viewModel.hasNetworkDependentFilters || viewModel.showFavoritesOnly || 
+           (viewModel.minimumRating > 0 && viewModel.useLocalRatings) ||
+           (!viewModel.isAllCategoriesMode && !viewModel.selectedCategoryKeys.isEmpty) {
+            logger.notice("Using filtered places list for display (filters or category selection active)")
+            
+            // Log more details when we have no places to display
+            if viewModel.filteredPlaces.isEmpty {
+                logger.notice("⚠️ WARNING: Filtered places list is empty!")
+                
+                if !viewModel.isAllCategoriesMode && !viewModel.selectedCategoryKeys.isEmpty {
+                    logger.notice("🔍 Category filter is active for: \(viewModel.selectedCategoryKeys.map { CategoryMappings.getEmojiForKey($0) ?? "?" }.joined())")
+                }
+                
+                // Log total places available
+                logger.notice("🔍 Total places available: \(viewModel.places.count)")
+                
+                // If we're filtering by coffee, do extra logging
+                if viewModel.selectedCategoryKeys.contains(4) {
+                    let coffeeEmoji = CategoryMappings.getEmojiForKey(4) ?? "☕️"
+                    let coffeePlaces = viewModel.places.filter { $0.emoji.contains(coffeeEmoji) }
+                    logger.notice("🔍 Coffee places in main collection: \(coffeePlaces.count)")
+                    
+                    // Log a few sample coffee places
+                    for (index, place) in coffeePlaces.prefix(3).enumerated() {
+                        logger.notice("🔍 Coffee place \(index+1): \(place.displayName ?? "Unknown") - Emoji: '\(place.emoji)'")
+                    }
+                }
+            }
+            
             return viewModel.filteredPlaces
         } else {
             // If no filters are active, use the regular places list
@@ -76,7 +99,20 @@ struct Home: View {
                     
                     // Bottom buttons container
                     VStack {
-                       
+                        // Display place count badge if categories or filters are active
+                        if !viewModel.isAllCategoriesMode || viewModel.hasActiveFilters {
+                            Text("\(placesToDisplay.count) places")
+                                .font(.caption)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 4)
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .clipShape(Capsule())
+                                .shadow(radius: 2)
+                                .transition(.scale.combined(with: .opacity))
+                                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: placesToDisplay.count)
+                        }
+                        
                         Spacer()
                         
                         HStack {

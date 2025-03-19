@@ -96,10 +96,17 @@ struct FilterView: View {
         let ratingChanged = minimumRating != viewModel.minimumRating
         
         // Check if rating source has changed from the view model's value
-        let ratingSourceChanged = useLocalRatings != viewModel.useLocalRatings
+        // Only consider rating source change as a meaningful change if a rating value is active
+        let ratingSourceChanged = useLocalRatings != viewModel.useLocalRatings && 
+                                  (minimumRating > 0 || viewModel.minimumRating > 0)
         
         // Check if open now filter has changed
         let openNowChanged = showOpenNowOnly != initialOpenNowOnly
+        
+        // Log the change state for debugging
+        if useLocalRatings != viewModel.useLocalRatings {
+            logger.notice("Rating source changed: \(viewModel.useLocalRatings) -> \(useLocalRatings), minimumRating: \(minimumRating), viewModel rating: \(viewModel.minimumRating), considered as change: \(ratingSourceChanged)")
+        }
         
         return priceLevelsChanged || ratingChanged || ratingSourceChanged || openNowChanged
     }

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Swift
 import CoreLocation
 import MapKit
 import Combine
@@ -71,8 +72,9 @@ class DefaultClerkService: ClerkService {
 @MainActor
 class HomeViewModel: ObservableObject {
     // Published properties for UI state
-    @Published var places: [Place] = []
-    @Published var filteredPlaces: [Place] = []
+    @Published private var allPlacesById: [String: Place] = [:]  // All places loaded from API
+    @Published private var networkFilteredPlaceIds: Set<String> = [] // IDs of places from network-dependent filters
+    @Published private(set) var filteredPlaces: [Place] = [] // View-facing filtered list
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var isFilterSheetPresented = false
@@ -96,19 +98,82 @@ class HomeViewModel: ObservableObject {
     @Published var useLocalRatings: Bool = false
     @Published var showOpenNowOnly: Bool = false
     
+    // For category mapping - replace allPlacesByCategory
+    private var categoryPlaceIds: [Int: Set<String>] = [:]
+    
+    // Flag to track if a network request for selected categories is in progress
+    private var isFetchingCategories = false
+    
+    // Map state
+    @Published var visibleRegion: MKCoordinateRegion?
+    private var lastFetchedRegion: MKCoordinateRegion?
+    private var regionChangeDebounceTask: Task<Void, Never>?
+    private var fetchTask: Task<Void, Never>?
+    private var isSuperZoomedIn: Bool = false // Track super zoomed in state
+    private var currentViewportRadius: Double = 5000 // Default radius in meters
+
+    // Location manager
+    let locationManager = LocationManager()
+    
+    // Services
+    let placesService: PlacesServiceProtocol
+    let userPreferences: UserPreferences
+    
+    // Logger
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "HomeViewModel")
+    
+    // Cancellables
+    private var cancellables = Set<AnyCancellable>()
+    
     // Computed property to check if all price levels are selected or none are selected
     var allPriceLevelsSelected: Bool {
-        // If no price levels are selected, it's the same as all being selected (no filtering)
-        if selectedPriceLevels.isEmpty {
+        // If no price levels are selected, it means we're not filtering by price level
+        if self.selectedPriceLevels.isEmpty {
+            logger.notice("No price levels selected - treating as all selected")
             return true
         }
         
-        // Otherwise, check if all 4 price levels are selected
-        return selectedPriceLevels.count == 4 && 
-               selectedPriceLevels.contains(1) && 
-               selectedPriceLevels.contains(2) && 
-               selectedPriceLevels.contains(3) && 
-               selectedPriceLevels.contains(4)
+        // If all price levels (1-4) are selected, it's equivalent to no price level filter
+        let allSelected = self.selectedPriceLevels.count == 4 &&
+            self.selectedPriceLevels.contains(1) &&
+            self.selectedPriceLevels.contains(2) &&
+            self.selectedPriceLevels.contains(3) &&
+            self.selectedPriceLevels.contains(4)
+        
+        logger.notice("Price level selection state: \(allSelected ? "all selected" : "partial selection")")
+        return allSelected
+    }
+    
+    var hasPriceLevelFilters: Bool {
+        // Define the full range of possible price levels (1 to 4)
+        let allPriceLevels: Set<Int> = [1, 2, 3, 4]
+        
+        // Check if selectedPriceLevels is not empty and not equal to all possible levels
+        return !selectedPriceLevels.isEmpty && selectedPriceLevels != allPriceLevels
+    }
+    
+    var hasOpenNowFilter: Bool {
+        return self.showOpenNowOnly
+    }
+    
+    // Rating set and source set to Google, not Local User Ratings
+    var hasGoogleRatingFilter: Bool {
+        return self.minimumRating > 0 && !self.useLocalRatings
+    }
+    
+    // TRUE if we have any of the following
+    // Open Now On
+    // Price Level -> non-default
+    // Google Minimum Ratings
+    var hasNetworkDependentFilters: Bool {
+        // Return true if any network-dependent filter is active
+        return self.hasPriceLevelFilters || self.hasOpenNowFilter || self.hasGoogleRatingFilter
+    }
+    
+    var hasNonNetworkDependentFilters: Bool {
+        return showFavoritesOnly || // Favorites filter is client-side
+               (minimumRating > 0 && useLocalRatings) || // Local ratings filter is client-side
+               (!isAllCategoriesMode && !selectedCategoryKeys.isEmpty) // Category filter can be client-side if data is local
     }
     
     // Computed property to check if there are active filters
@@ -127,39 +192,32 @@ class HomeViewModel: ObservableObject {
         return hasPriceLevelFilters || hasRatingFilter || hasOpenNowFilter
     }
     
-    // Computed property to check if we have network-dependent filters
-    var hasNetworkDependentFilters: Bool {
-        // Price level filters require network request
-        let hasPriceLevelFilters = !allPriceLevelsSelected
-        
-        // Open now filter requires network request
-        let hasOpenNowFilter = showOpenNowOnly
-        
-        // Google Maps rating filter requires network request (but not local ratings)
-        let hasGoogleRatingFilter = minimumRating > 0 && !useLocalRatings
-        
-        return hasPriceLevelFilters || hasOpenNowFilter || hasGoogleRatingFilter
+    
+    // Helper property to get all places as an array (for cases where we need the array form)
+    private var allPlaces: [Place] {
+        Array(allPlacesById.values)
     }
     
-    // Map state
-    @Published var visibleRegion: MKCoordinateRegion?
-    private var lastFetchedRegion: MKCoordinateRegion?
-    private var regionChangeDebounceTask: Task<Void, Never>?
-    private var fetchTask: Task<Void, Never>?
-    private var isSuperZoomedIn: Bool = false // Track super zoomed in state
+    // MARK: - Properties for backward compatibility
     
-    // Location manager
-    let locationManager = LocationManager()
+    /// Public accessor for all places (for backward compatibility)
+    var places: [Place] {
+        Array(allPlacesById.values)
+    }
     
-    // Services
-    let placesService: PlacesServiceProtocol
-    let userPreferences: UserPreferences
-    
-    // Logger
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "HomeViewModel")
-    
-    // Cancellables
-    private var cancellables = Set<AnyCancellable>()
+    /// Method to set places directly (for testing and preview purposes)
+    func setPlaces(_ newPlaces: [Place]) {
+        // Clear existing places
+        allPlacesById.removeAll()
+        
+        // Add the new places
+        for place in newPlaces {
+            allPlacesById[place.id] = place
+        }
+        
+        // Update filtered places
+        updateFilteredPlaces()
+    }
     
     // MARK: - Initialization
     
@@ -403,9 +461,14 @@ class HomeViewModel: ObservableObject {
         let averageSpan = (region.span.latitudeDelta + region.span.longitudeDelta) / 2
         isSuperZoomedIn = averageSpan < superZoomedInThreshold
         
-        if isSuperZoomedIn {
-            logger.notice("🔍 Super zoomed in! Average span: \(averageSpan)")
-        }
+        // Calculate an appropriate radius based on the visible region
+        // Convert latitude/longitude span to approximate meters
+        // 1 degree of latitude ≈ 111km, so we use the average span × 111000 / 2
+        let spanInMeters = (region.span.latitudeDelta + region.span.longitudeDelta) * 111000 / 2
+        
+        // Set the current viewport radius to be appropriate for the map view
+        // Use 75% of the span to ensure we get places within the visible area with some margin
+        currentViewportRadius = spanInMeters * 0.75
         
         // Cancel any existing debounce task
         regionChangeDebounceTask?.cancel()
@@ -426,11 +489,9 @@ class HomeViewModel: ObservableObject {
                 // Determine which API endpoint to use based on category selection
                 if !isAllCategoriesMode && !selectedCategoryKeys.isEmpty {
                     // If specific categories are selected, use the category-specific endpoint
-                    logger.notice("Fetching places by categories due to region change: \(self.selectedCategoryKeys)")
                     fetchPlacesByCategories(at: center)
                 } else {
                     // Otherwise use the regular nearby places endpoint
-                    logger.notice("Fetching all nearby places due to region change")
                     fetchNearbyPlaces(at: center)
                     
                     // If we have network-dependent filters, also fetch filtered places
@@ -448,8 +509,7 @@ class HomeViewModel: ObservableObject {
     func refreshPlaces(clearExisting: Bool = false) {
         // Clear existing places if requested
         if clearExisting {
-            places.removeAll()
-            logger.notice("Cleared existing places for full refresh")
+            allPlacesById.removeAll()
         }
         
         // Determine which location to use
@@ -464,11 +524,9 @@ class HomeViewModel: ObservableObject {
         // Determine which API endpoint to use based on category selection
         if !isAllCategoriesMode && !selectedCategoryKeys.isEmpty {
             // If specific categories are selected, use the category-specific endpoint
-            logger.notice("Refreshing places by categories: \(self.selectedCategoryKeys)")
             fetchPlacesByCategories(at: location)
         } else {
             // Otherwise use the regular nearby places endpoint
-            logger.notice("Refreshing all nearby places")
             fetchNearbyPlaces(at: location, useCache: false)
         }
     }
@@ -487,7 +545,6 @@ class HomeViewModel: ObservableObject {
     func selectPlace(_ place: Place) {
         selectedPlace = place
         isPlaceDetailSheetPresented = true
-        logger.notice("Selected place: \(place.id)")
     }
     
     /// Dismiss the place detail sheet
@@ -501,11 +558,6 @@ class HomeViewModel: ObservableObject {
     /// Toggle favorites filter
     func toggleFavoritesFilter() {
         showFavoritesOnly.toggle()
-        logger.notice("Toggled favorites filter: \(self.showFavoritesOnly ? "ON" : "OFF")")
-        
-        if showFavoritesOnly {
-            logger.notice("Showing only \(self.userPreferences.favoritePlaceIds.count) favorited places")
-        }
         
         // Update filtered places based on the current state
         updateFilteredPlaces()
@@ -515,7 +567,6 @@ class HomeViewModel: ObservableObject {
     func toggleAllCategories() {
         // If already in "All" mode, do nothing (prevent deselection)
         if isAllCategoriesMode {
-            logger.notice("All categories mode already active, ignoring toggle")
             return
         }
         
@@ -524,9 +575,7 @@ class HomeViewModel: ObservableObject {
         
         // Clear selected categories when "All" is selected
         selectedCategoryKeys.removeAll()
-        logger.notice("All categories mode enabled, cleared selected categories")
         
-        logger.notice("Selected keys: \(self.selectedCategoryKeys)")
         applyFilters()
     }
     
@@ -534,39 +583,48 @@ class HomeViewModel: ObservableObject {
     func toggleCategory(key: Int, emoji: String) {
         if selectedCategoryKeys.contains(key) {
             selectedCategoryKeys.remove(key)
-            logger.notice("Deselected category with key: \(key) \(emoji)")
         } else {
             selectedCategoryKeys.insert(key)
-            logger.notice("Selected category with key: \(key) \(emoji)")
         }
         
         // If no categories are selected, switch to "All" mode
         if selectedCategoryKeys.isEmpty {
             isAllCategoriesMode = true
-            logger.notice("No categories selected, switched to All mode")
             
-            // Fetch all nearby places when switching to "All" mode
-            if let location = visibleRegion?.center ?? locationManager.lastLocation?.coordinate {
-                fetchNearbyPlaces(at: location)
+            // When switching back to "All" mode, restore full places list
+            if !hasNetworkDependentFilters {
+                // Use the full places list for filtering immediately
+                updateFilteredPlaces()
+            } else {
+                // For network-dependent filters, keep using those
+                updateFilteredPlaces()
             }
         } else {
+            // If we're switching from "All" to specific categories
+            let wasAllMode = isAllCategoriesMode
             isAllCategoriesMode = false
             
-            // Log when not in "all" mode with the selected key
-            logger.notice("Not all - Category key selected: \(key) \(emoji)")
-            
-            // Fetch places by categories when we have categories selected
-            fetchPlacesByCategories()
+            // If this is the first category selection (switching from All mode),
+            // we'll need to refresh the filtered list completely
+            if wasAllMode {
+                // Clear network filtered places when switching modes to ensure we get fresh data
+                if hasNetworkDependentFilters {
+                    resetNetworkFilteredPlaces()
+                }
+            }
         }
         
-        logger.notice("Selected keys: \(self.selectedCategoryKeys)")
-        applyFilters()
+        // Immediately update filtered places with what we have locally
+        updateFilteredPlaces()
+        
+        // If in a specific category mode and not already fetching, fetch more places
+        if !isAllCategoriesMode && !isFetchingCategories {
+            fetchPlacesByCategories()
+        }
     }
     
-    /// Apply filters to places based on selected categories
+    /// Apply filters to places based on selected categories and other filters
     func applyFilters() {
-        logger.notice("Applying filters: price levels = \(self.selectedPriceLevels)")
-        
         // Create the request body with the selected filters
         let location = visibleRegion?.center ?? locationManager.lastLocation?.coordinate
         
@@ -576,11 +634,15 @@ class HomeViewModel: ObservableObject {
             return
         }
         
-        // Reset filteredPlaces when filters change
-        filteredPlaces.removeAll()
-        logger.notice("Reset filteredPlaces due to filter change")
+        // Clear network filtered places when filter criteria change
+        if hasNetworkDependentFilters {
+            resetNetworkFilteredPlaces()
+        }
         
-        // Refresh places with the new filters
+        // First update filtered places with what we have locally
+        updateFilteredPlaces()
+        
+        // Then fetch more places with the new filters in the background
         Task {
             await fetchPlacesWithFilters(at: location)
         }
@@ -588,88 +650,74 @@ class HomeViewModel: ObservableObject {
     
     /// Fetch places with applied filters
     private func fetchPlacesWithFilters(at location: CLLocationCoordinate2D) async {
-        guard !isLoading else {
-            logger.notice("Skipping fetch with filters - already loading")
+        guard !self.isLoading else {
             return
         }
         
-        isLoading = true
-        errorMessage = nil
-        
-        // If we don't have network-dependent filters, just apply local filtering
-        if !hasNetworkDependentFilters {
-            logger.notice("Using local filtering only (no network-dependent filters)")
-            updateFilteredPlaces()
-            isLoading = false
+        if !self.hasNetworkDependentFilters {
             return
         }
+        
+        self.isLoading = true
+        self.errorMessage = nil
         
         do {
             // If all price levels are selected or none are selected, treat it as if no price level filter is applied
             let priceLevelsToUse: [Int]?
-            if allPriceLevelsSelected {
-                logger.notice("No price level filtering applied (all levels selected or none selected)")
+            if self.selectedPriceLevels.isEmpty || self.allPriceLevelsSelected {
                 priceLevelsToUse = nil
             } else {
-                logger.notice("Applying price level filter: \(Array(self.selectedPriceLevels).sorted())")
-                priceLevelsToUse = Array(selectedPriceLevels).sorted()
+                let sortedLevels = Array(self.selectedPriceLevels).sorted()
+                priceLevelsToUse = sortedLevels
             }
             
             // Determine if we should include minimum rating in the request
             // Only include it when using Google Maps ratings (not local ratings)
             let minimumRatingToUse: Int?
-            if !useLocalRatings && minimumRating > 0 {
-                minimumRatingToUse = minimumRating
-                logger.notice("Applying Google Maps minimum rating filter server-side: \(self.minimumRating)")
+            if !self.useLocalRatings && self.minimumRating > 0 {
+                minimumRatingToUse = self.minimumRating
             } else {
                 minimumRatingToUse = nil
-                if minimumRating > 0 && useLocalRatings {
-                    logger.notice("Using local ratings filter: \(self.minimumRating) (will be applied client-side)")
-                } else {
-                    logger.notice("No rating filter applied")
-                }
             }
+            
+            // Get the current search radius
+            let searchRadius = getSearchRadius()
             
             // Create request body with filters
             let requestBody = PlaceSearchRequest(
-                keys: isAllCategoriesMode ? nil : Array(selectedCategoryKeys),
-                openNow: showOpenNowOnly ? true : nil, // Use the showOpenNowOnly filter
+                keys: self.isAllCategoriesMode ? nil : Array(self.selectedCategoryKeys),
+                openNow: self.showOpenNowOnly,
                 priceLevels: priceLevelsToUse,
-                radius: 5000, // Default radius
+                radius: searchRadius,
                 location: PlaceSearchRequest.LocationCoordinate(
                     latitude: location.latitude,
                     longitude: location.longitude
                 ),
-                bypassCache: true, // Always bypass cache when applying filters
+                bypassCache: true,
                 maxResultCount: nil,
-                minimumRating: minimumRatingToUse // Add the minimum rating parameter
+                minimumRating: minimumRatingToUse
             )
-            
-            logger.notice("Fetching places with filters at location: \(location.latitude), \(location.longitude)")
-            
+                        
             let response: PlacesResponse = try await placesService.fetchWithFilters(
                 location: location,
                 requestBody: requestBody
             )
             
-            // Log the response details
-            logger.notice("Response from API: count=\(response.count), cacheHit=\(response.cacheHit), results.count=\(response.results.count)")
+            // Always merge into main places collection to maintain a complete set
+            mergePlaces(response.results)
             
-            // Merge new filtered places with existing filtered places
-            mergeFilteredPlaces(response.results)
+            // Also merge into network filtered places
+            mergeNetworkFilteredPlaces(response.results)
             
-            if !useLocalRatings && minimumRating > 0 {
-                logger.notice("Places already filtered by Google Maps rating \(self.minimumRating)+ server-side")
-            }
-            
-            logger.notice("Successfully fetched \(response.results.count) places with filters")
+            // Update the filtered places to include both local and network filtered results
+            updateFilteredPlaces()
             
             // Ensure loading indicator is turned off
-            isLoading = false
+            self.isLoading = false
         } catch {
             logger.error("Failed to fetch places with filters: \(error.localizedDescription)")
-            errorMessage = "Failed to fetch places: \(error.localizedDescription)"
-            isLoading = false
+            self.errorMessage = "Failed to fetch places: \(error.localizedDescription)"
+            self.isLoading = false
         }
     }
     
@@ -677,9 +725,11 @@ class HomeViewModel: ObservableObject {
     private func fetchPlacesByCategories(at location: CLLocationCoordinate2D? = nil) {
         // Only proceed if we have categories selected
         guard !selectedCategoryKeys.isEmpty else {
-            logger.notice("No categories selected, skipping category-specific fetch")
             return
         }
+        
+        // Mark that we're fetching to prevent duplicate requests
+        isFetchingCategories = true
         
         // Cancel any existing fetch task
         fetchTask?.cancel()
@@ -689,17 +739,13 @@ class HomeViewModel: ObservableObject {
         
         // Only proceed if we have a location
         guard let fetchLocation = fetchLocation else {
-            logger.error("Cannot fetch places by categories: No location available")
+            isFetchingCategories = false
             return
         }
         
-        // Log if we're bypassing cache due to being super zoomed in
-        if isSuperZoomedIn {
-            logger.notice("Super zoomed in mode - adding bypassCache parameter to categories request")
-        }
-        
-        logger.notice("Fetching places by categories: \(self.selectedCategoryKeys) at location: \(fetchLocation.latitude), \(fetchLocation.longitude)")
-        
+        // Get the current search radius
+        let searchRadius = getSearchRadius()
+                
         // Create a new fetch task
         fetchTask = Task {
             do {
@@ -707,16 +753,29 @@ class HomeViewModel: ObservableObject {
                 let fetchedPlaces = try await placesService.fetchPlacesByCategories(
                     location: fetchLocation,
                     categoryKeys: categoryKeysArray,
-                    bypassCache: isSuperZoomedIn // Add bypassCache parameter
+                    bypassCache: isSuperZoomedIn, // Add bypassCache parameter
+                    radius: searchRadius // Pass the current search radius
                 )
                 
                 // Check if the task was cancelled
-                if Task.isCancelled { return }
+                if Task.isCancelled { 
+                    isFetchingCategories = false
+                    return 
+                }
                 
-                // Merge new places with existing places
+                // Merge new places into the all places collection
                 mergePlaces(fetchedPlaces)
-                logger.notice("Fetched \(fetchedPlaces.count) places by categories, total places now: \(self.places.count)")
                 
+                // Also track places by category to maintain a complete collection
+                for categoryKey in selectedCategoryKeys {
+                    if categoryPlaceIds[categoryKey] == nil {
+                        categoryPlaceIds[categoryKey] = []
+                    }
+                    
+                    // Add the fetched places to this category collection
+                    mergePlacesIntoCategory(fetchedPlaces, categoryKey: categoryKey)
+                }
+                                
                 // If we have network-dependent filters, fetch filtered places
                 if hasNetworkDependentFilters {
                     // Fetch filtered places with the same location
@@ -725,35 +784,223 @@ class HomeViewModel: ObservableObject {
                     // Otherwise just apply local filtering
                     updateFilteredPlaces()
                 }
+                
+                isFetchingCategories = false
             } catch {
                 // Check if the task was cancelled
-                if Task.isCancelled { return }
+                if Task.isCancelled { 
+                    isFetchingCategories = false
+                    return 
+                }
                 
-                errorMessage = "Failed to load places by categories: \(error.localizedDescription)"
+                self.errorMessage = "Failed to load places by categories: \(error.localizedDescription)"
                 logger.error("Error fetching places by categories: \(error.localizedDescription)")
+                isFetchingCategories = false
             }
         }
     }
     
-    /// Check if a place is favorited by the current user
-    func isPlaceFavorited(placeId: String) -> Bool {
-        guard let user = currentUser else {
-            return false
+    /// Merge places into a specific category collection
+    private func mergePlacesIntoCategory(_ newPlaces: [Place], categoryKey: Int) {
+        guard let emoji = CategoryMappings.getEmojiForKey(categoryKey) else {
+            return
+        }
+                
+        // Initialize the set if it doesn't exist
+        if categoryPlaceIds[categoryKey] == nil {
+            categoryPlaceIds[categoryKey] = []
         }
         
-        return user.favorites.contains { $0.placeId == placeId }
+        var categoryPlaceIdsSet = categoryPlaceIds[categoryKey] ?? []
+        let countBefore = categoryPlaceIdsSet.count
+                
+        // Filter to places that contain this emoji category
+        let placesWithEmoji = newPlaces.filter { place in
+            let contains = place.emoji.contains(emoji)
+            return contains
+        }
+        
+        // Add place IDs to the category
+        for place in placesWithEmoji {
+            categoryPlaceIdsSet.insert(place.id)
+            
+            // Also ensure the place is in the main collection
+            allPlacesById[place.id] = place
+        }
+        
+        categoryPlaceIds[categoryKey] = categoryPlaceIdsSet
     }
     
-    /// Get the favorite object for a place if it exists
-    func getFavorite(for placeId: String) -> Favorite? {
-        guard let user = currentUser else {
-            return nil
+    /// Merge new places into the network filtered collection
+    private func mergeNetworkFilteredPlaces(_ newPlaces: [Place]) {
+        // Count before adding
+        let countBefore = networkFilteredPlaceIds.count
+        
+        // Add the IDs of the new places
+        for place in newPlaces {
+            networkFilteredPlaceIds.insert(place.id)
+            
+            // Also ensure the place is in the main collection
+            allPlacesById[place.id] = place
+        }
+    }
+    
+    /// Update the filtered places based on current filter settings
+    public func updateFilteredPlaces() {
+        // Start with the appropriate source collection
+        var filteredIds: Set<String>
+        
+        if hasNetworkDependentFilters {
+            // Start with network filtered places if we have network-dependent filters
+            filteredIds = networkFilteredPlaceIds
+        } else {
+            // Otherwise, start with all places
+            filteredIds = Set(allPlacesById.keys)
         }
         
-        return user.favorites.first { $0.placeId == placeId }
+        // Apply favorites filter if enabled
+        if showFavoritesOnly {
+            let beforeFavCount = filteredIds.count
+            filteredIds = filteredIds.filter { userPreferences.isFavorite(placeId: $0) }
+        }
+        
+        // Apply category filter if not in all categories mode
+        if !isAllCategoriesMode && !selectedCategoryKeys.isEmpty {
+            // Create a set of all places that match any of the selected categories
+            let categoryMatchingIds = selectedCategoryKeys.reduce(into: Set<String>()) { result, key in
+                if let categoryIds = categoryPlaceIds[key] {
+                    result.formUnion(categoryIds)
+                }
+            }
+            
+            let beforeCatCount = filteredIds.count
+            
+            // If we have precomputed category matches, use them
+            if !categoryMatchingIds.isEmpty {
+                filteredIds = filteredIds.intersection(categoryMatchingIds)
+            } else {
+                // This is less efficient, but necessary as a fallback
+                filteredIds = filteredIds.filter { placeId in
+                    guard let place = allPlacesById[placeId] else { return false }
+                    
+                    let containsCategory = CategoryMappings.placeContainsSelectedCategories(
+                        placeEmoji: place.emoji, 
+                        selectedCategoryKeys: selectedCategoryKeys
+                    )
+                    
+                    return containsCategory
+                }
+            }
+        }
+        
+        // Apply rating filter if set
+        if minimumRating > 0 {
+            if useLocalRatings {
+                // Use local user ratings
+                filteredIds = filteredIds.filter { placeId in
+                    let userRating = userPreferences.getRating(placeId: placeId)
+                    return Double(userRating) >= Double(self.minimumRating)
+                }
+                logger.notice("Filtered to \(filteredIds.count) place IDs with local rating >= \(self.minimumRating)")
+            } else if !hasNetworkDependentFilters {
+                // Use Google ratings only for local filtering (if network filtering isn't in use)
+                filteredIds = filteredIds.filter { placeId in
+                    guard let place = allPlacesById[placeId], let rating = place.rating else {
+                        return false
+                    }
+                    return rating >= Double(self.minimumRating)
+                }
+                logger.notice("Filtered to \(filteredIds.count) place IDs with Google rating >= \(self.minimumRating)")
+            }
+        }
+        
+        // Apply price level filter if any are selected and not using network filters
+        if !self.allPriceLevelsSelected && !self.hasNetworkDependentFilters {
+            filteredIds = filteredIds.filter { [self] placeId in
+                guard let place = allPlacesById[placeId] else { return false }
+                
+                if let priceLevel = place.priceLevel {
+                    return self.selectedPriceLevels.contains(priceLevel)
+                }
+                // If no price level is specified, include it if price level 1 is selected
+                return self.selectedPriceLevels.contains(1)
+            }
+            logger.notice("Filtered to \(filteredIds.count) place IDs with selected price levels")
+        }
+        
+        // Convert filtered IDs back to Place objects
+        let newFilteredPlaces = filteredIds.compactMap { allPlacesById[$0] }
+        
+        // Set the filtered places
+        filteredPlaces = newFilteredPlaces
+        
+        // Log final count
+        logger.notice("Final filteredPlaces count: \(self.filteredPlaces.count)")
+    }
+    
+    /// Set all price levels (1-4) as selected
+    func selectAllPriceLevels() {
+        self.selectedPriceLevels = [1, 2, 3, 4]
+        logger.notice("All price levels selected: \(self.selectedPriceLevels.sorted())")
+        updateFilteredPlaces()
+    }
+    
+    /// Clear all price levels and select only the specified level
+    func selectOnlyPriceLevel(_ level: Int) {
+        guard (1...4).contains(level) else {
+            logger.error("Invalid price level: \(level)")
+            return
+        }
+        
+        // Clear all selections and select only the specified level
+        self.selectedPriceLevels.removeAll()
+        self.selectedPriceLevels.insert(level)
+        logger.notice("Selected only price level \(level)")
+        
+        // Update filtered places to reflect the new selection
+        updateFilteredPlaces()
+    }
+    
+    /// Recommend a random place from the filtered places list
+    @MainActor
+    public func recommendRandomPlace() {
+        if filteredPlaces.isEmpty {
+            logger.notice("Cannot recommend a place: No filtered places available")
+            return
+        }
+        
+        // Select a random place from the filtered places
+        if let randomPlace = filteredPlaces.randomElement() {
+            logger.notice("Recommending random place: \(randomPlace.displayName ?? "Unknown")")
+            selectedPlace = randomPlace
+            isPlaceDetailSheetPresented = true
+        } else {
+            logger.error("Failed to select a random place even though filtered places is not empty")
+        }
+    }
+    
+    /// Updates the filtered places after a rating change (mainly used for testing)
+    @MainActor
+    public func updateFilteredPlacesAfterRatingChange() {
+        if useLocalRatings && minimumRating > 0 {
+            logger.notice("Manually updating filtered places after rating change")
+            updateFilteredPlaces()
+        }
     }
     
     // MARK: - Private Methods
+    /// Get the appropriate search radius based on the current viewport
+    private func getSearchRadius() -> Int {
+        // Round to nearest 100 meters for cleaner values
+        let radius = Int(currentViewportRadius.rounded() / 100) * 100
+        
+        // Use Configuration values instead of hardcoded ones
+        let minRadius = Configuration.minSearchRadius
+        let maxRadius = Configuration.maxSearchRadius
+        
+        // Return the clamped value
+        return min(max(radius, minRadius), maxRadius)
+    }
     
     /// Determine if we should fetch new data based on region change
     private func shouldFetchForRegion(_ region: MKCoordinateRegion) -> Bool {
@@ -786,7 +1033,7 @@ class HomeViewModel: ObservableObject {
         fetchTask?.cancel()
         
         // Only show loading indicator if we have no places to display
-        let shouldShowLoading = places.isEmpty
+        let shouldShowLoading = allPlaces.isEmpty
         if shouldShowLoading {
             isLoading = true
         }
@@ -796,19 +1043,23 @@ class HomeViewModel: ObservableObject {
         // Store the current region as the last fetched region
         lastFetchedRegion = visibleRegion
         
+        // Get the search radius based on the current viewport
+        let searchRadius = getSearchRadius()
+        
         // Log if we're bypassing cache due to being super zoomed in
         if isSuperZoomedIn {
             logger.notice("Super zoomed in mode - adding bypassCache parameter to request")
         }
         
-        logger.notice("Fetching nearby places at \(coordinate.latitude), \(coordinate.longitude)")
+        logger.notice("Fetching nearby places at \(coordinate.latitude), \(coordinate.longitude), radius: \(searchRadius)m")
         
         // Create a new fetch task
         fetchTask = Task {
             do {
                 let fetchedPlaces = try await placesService.fetchNearbyPlaces(
                     location: coordinate,
-                    useCache: useCache && !isSuperZoomedIn // Don't use cache if super zoomed in
+                    useCache: useCache && !isSuperZoomedIn, // Don't use cache if super zoomed in
+                    radius: searchRadius
                 )
                 
                 // Check if the task was cancelled
@@ -816,7 +1067,7 @@ class HomeViewModel: ObservableObject {
                 
                 // Merge new places with existing places instead of replacing
                 mergePlaces(fetchedPlaces)
-                logger.notice("Fetched \(fetchedPlaces.count) places, total places now: \(self.places.count)")
+                logger.notice("Fetched \(fetchedPlaces.count) places, total places now: \(self.allPlaces.count)")
                 
                 // If we have network-dependent filters, fetch filtered places
                 if hasNetworkDependentFilters {
@@ -846,206 +1097,39 @@ class HomeViewModel: ObservableObject {
         }
     }
     
-    /// Fetch nearby places from the service using Combine (legacy method)
-    private func fetchNearbyPlacesWithCombine(at coordinate: CLLocationCoordinate2D, useCache: Bool = true) {
-        // Only show loading indicator if we have no places to display
-        let shouldShowLoading = places.isEmpty
-        if shouldShowLoading {
-            isLoading = true
-        }
-        
-        errorMessage = nil
-        
-        // Store the current region as the last fetched region
-        lastFetchedRegion = visibleRegion
-        
-        logger.notice("Fetching nearby places at \(coordinate.latitude), \(coordinate.longitude)")
-        
-        placesService.fetchNearbyPlacesPublisher(location: coordinate, useCache: useCache)
-            .sink(receiveCompletion: { [weak self] completion in
-                guard let self = self else { return }
-                
-                // Only hide loading if we were showing it
-                if shouldShowLoading {
-                    self.isLoading = false
-                }
-                
-                if case .failure(let error) = completion {
-                    self.errorMessage = "Failed to load places: \(error.localizedDescription)"
-                    self.logger.error("Error fetching places: \(error.localizedDescription)")
-                }
-            }, receiveValue: { [weak self] fetchedPlaces in
-                guard let self = self else { return }
-                
-                // Merge new places with existing places instead of replacing
-                self.mergePlaces(fetchedPlaces)
-                self.logger.notice("Fetched \(fetchedPlaces.count) places, total places now: \(self.places.count)")
-                
-                // Apply filters to update filtered places
-                self.applyFilters()
-                
-                // Hide loading indicator if it was showing
-                if shouldShowLoading {
-                    self.isLoading = false
-                }
-            })
-            .store(in: &cancellables)
-    }
-    
     /// Merge new places with existing places, avoiding duplicates
     private func mergePlaces(_ newPlaces: [Place]) {
-        // Create a dictionary of existing places by ID for efficient lookup
-        let existingPlacesById = Dictionary(uniqueKeysWithValues: places.map { ($0.id, $0) })
-        
         // Count before adding
-        let countBefore = places.count
+        let countBefore = allPlacesById.count
         
-        // Add only places that don't already exist
+        // Add or update places
         for place in newPlaces {
-            if existingPlacesById[place.id] == nil {
-                places.append(place)
-            }
+            allPlacesById[place.id] = place
         }
         
         // Log how many new places were added
-        let addedCount = places.count - countBefore
+        let addedCount = allPlacesById.count - countBefore
         if addedCount > 0 {
-            logger.notice("Added \(addedCount) new unique places, total now: \(self.places.count)")
+            logger.notice("Added \(addedCount) new unique places, total now: \(self.allPlacesById.count)")
         } else {
-            logger.notice("No new unique places to add, total remains: \(self.places.count)")
+            logger.notice("No new unique places to add, total remains: \(self.allPlacesById.count)")
         }
     }
     
     /// Clear all places (useful for reset functionality if needed)
     func clearPlaces() {
-        places.removeAll()
+        allPlacesById.removeAll()
+        networkFilteredPlaceIds.removeAll()
+        categoryPlaceIds.removeAll()
         filteredPlaces.removeAll()
         logger.notice("Cleared all places")
     }
     
-    /// Merge new filtered places with existing filtered places, avoiding duplicates
-    private func mergeFilteredPlaces(_ newPlaces: [Place]) {
-        // Create a dictionary of existing filtered places by ID for efficient lookup
-        let existingPlacesById = Dictionary(uniqueKeysWithValues: filteredPlaces.map { ($0.id, $0) })
-        
-        // Count before adding
-        let countBefore = filteredPlaces.count
-        
-        // Add only places that don't already exist
-        for place in newPlaces {
-            if existingPlacesById[place.id] == nil {
-                filteredPlaces.append(place)
-            }
-        }
-        
-        // Log how many new places were added
-        let addedCount = filteredPlaces.count - countBefore
-        if addedCount > 0 {
-            logger.notice("Added \(addedCount) new unique filtered places, total now: \(self.filteredPlaces.count)")
-        } else {
-            logger.notice("No new unique filtered places to add, total remains: \(self.filteredPlaces.count)")
-        }
+    // New helper method to reset network filtered places
+    private func resetNetworkFilteredPlaces() {
+        networkFilteredPlaceIds.removeAll()
+        logger.notice("Reset network filtered place IDs")
     }
     
-    /// Update the filtered places based on current filter settings
-    public func updateFilteredPlaces() {
-        // Start with all places
-        var filtered = places
-        
-        // Apply favorites filter if enabled
-        if showFavoritesOnly {
-            filtered = filtered.filter { userPreferences.isFavorite(placeId: $0.id) }
-            logger.notice("Filtered to \(filtered.count) favorite places")
-        }
-        
-        // Apply category filter if not in all categories mode
-        if !isAllCategoriesMode && !selectedCategoryKeys.isEmpty {
-            filtered = filtered.filter { place in
-                // Check if the place has any emoji with matching category
-                place.emoji.contains(where: { character in
-                    let singleEmoji = String(character)
-                    if let key = CategoryMappings.getKeyForEmoji(singleEmoji) {
-                        return selectedCategoryKeys.contains(key)
-                    }
-                    return false
-                })
-            }
-            logger.notice("Filtered to \(filtered.count) places with selected categories")
-        }
-        
-        // Apply rating filter if set
-        if minimumRating > 0 {
-            if useLocalRatings {
-                // Use local user ratings
-                filtered = filtered.filter { place in
-                    let userRating = userPreferences.getRating(placeId: place.id)
-                    return Double(userRating) >= Double(self.minimumRating)
-                }
-                logger.notice("Filtered to \(filtered.count) places with local rating >= \(self.minimumRating)")
-            } else {
-                // Use Google ratings
-                filtered = filtered.filter { place in 
-                    if let rating = place.rating {
-                        return rating >= Double(self.minimumRating)
-                    }
-                    return false
-                }
-                logger.notice("Filtered to \(filtered.count) places with Google rating >= \(self.minimumRating)")
-            }
-        }
-        
-        // Apply price level filter if any are selected (and not all are selected)
-        if !allPriceLevelsSelected {
-            filtered = filtered.filter { place in
-                if let priceLevel = place.priceLevel {
-                    return selectedPriceLevels.contains(priceLevel)
-                }
-                // If no price level is specified, include it if price level 1 is selected
-                return selectedPriceLevels.contains(1)
-            }
-            logger.notice("Filtered to \(filtered.count) places with selected price levels")
-        }
-        
-        // Set the filtered places
-        filteredPlaces = filtered
-    }
-    
-    /// Set all price levels (1-4) as selected
-    func selectAllPriceLevels() {
-        selectedPriceLevels = [1, 2, 3, 4]
-        logger.notice("All price levels selected")
-    }
-    
-    /// Clear all price levels and select only the specified level
-    func selectOnlyPriceLevel(_ level: Int) {
-        selectedPriceLevels = [level]
-        logger.notice("Selected only price level \(level)")
-    }
-    
-    /// Recommend a random place from the filtered places list
-    @MainActor
-    public func recommendRandomPlace() {
-        if filteredPlaces.isEmpty {
-            logger.notice("Cannot recommend a place: No filtered places available")
-            return
-        }
-        
-        // Select a random place from the filtered places
-        if let randomPlace = filteredPlaces.randomElement() {
-            logger.notice("Recommending random place: \(randomPlace.displayName ?? "Unknown")")
-            selectedPlace = randomPlace
-            isPlaceDetailSheetPresented = true
-        } else {
-            logger.error("Failed to select a random place even though filtered places is not empty")
-        }
-    }
-    
-    /// Updates the filtered places after a rating change (mainly used for testing)
-    @MainActor
-    public func updateFilteredPlacesAfterRatingChange() {
-        if useLocalRatings && minimumRating > 0 {
-            logger.notice("Manually updating filtered places after rating change")
-            updateFilteredPlaces()
-        }
-    }
-} 
+}
+

@@ -1,15 +1,8 @@
-//
-//  PlacesService.swift
-//  emoji-map
-//
-//  Created by Enrique on 3/13/25.
-//
-
 import Foundation
 import CoreLocation
 import Combine
-import os.log
 import MapKit
+import os
 
 // MARK: - Errors
 
@@ -72,9 +65,6 @@ protocol PlacesServiceProtocol {
 
 @MainActor
 class PlacesService: PlacesServiceProtocol {
-    // Logger for debugging
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "PlacesService")
-    
     // Dependencies
     private let networkService: NetworkServiceProtocol
     
@@ -86,7 +76,6 @@ class PlacesService: PlacesServiceProtocol {
     
     init(networkService: NetworkServiceProtocol = NetworkService()) {
         self.networkService = networkService
-        logger.notice("PlacesService initialized")
     }
     
     // MARK: - Public Methods
@@ -110,7 +99,6 @@ class PlacesService: PlacesServiceProtocol {
         if useCache, 
            let cachedData = placesCache[cacheKey],
            Date().timeIntervalSince(cachedData.timestamp) < cacheExpirationTime {
-            logger.notice("Using cached places data for location: \(location.latitude), \(location.longitude), radius: \(radius)m")
             return cachedData.places
         }
         
@@ -131,8 +119,6 @@ class PlacesService: PlacesServiceProtocol {
                 minimumRating: nil
             )
             
-            logger.notice("Fetching nearby places for location: \(location.latitude), \(location.longitude), with radius: \(radius) meters")
-            
             let response: PlacesResponse = try await networkService.post(
                 endpoint: .placeSearch,
                 body: requestBody,
@@ -142,11 +128,9 @@ class PlacesService: PlacesServiceProtocol {
             
             // Cache the results
             placesCache[cacheKey] = (places: response.results, timestamp: Date())
-            logger.notice("Cached \(response.results.count) places for location: \(location.latitude), \(location.longitude), radius: \(radius)m")
             
             return response.results
         } catch {
-            logger.error("Error fetching places: \(error.localizedDescription)")
             throw mapToPlacesServiceError(error)
         }
     }
@@ -198,7 +182,6 @@ class PlacesService: PlacesServiceProtocol {
         if !bypassCache,
            let cachedData = placesCache[cacheKey],
            Date().timeIntervalSince(cachedData.timestamp) < cacheExpirationTime {
-            logger.notice("Using cached category-specific places data for location: \(location.latitude), \(location.longitude) and categories: \(categoryKeys)")
             return cachedData.places
         }
         
@@ -218,8 +201,6 @@ class PlacesService: PlacesServiceProtocol {
                 maxResultCount: nil,
                 minimumRating: minimumRating
             )
-            
-            logger.notice("Fetching places for categories \(categoryKeys) at location: \(location.latitude), \(location.longitude), with radius: \(radius) meters")
 
             let response: PlacesResponse = try await networkService.post(
                 endpoint: .placeSearch,
@@ -230,11 +211,9 @@ class PlacesService: PlacesServiceProtocol {
             
             // Cache the results
             placesCache[cacheKey] = (places: response.results, timestamp: Date())
-            logger.notice("Cached \(response.results.count) category-specific places for location: \(location.latitude), \(location.longitude) and categories: \(categoryKeys)")
             
             return response.results
         } catch {
-            logger.error("Error fetching places by categories: \(error.localizedDescription)")
             throw mapToPlacesServiceError(error)
         }
     }
@@ -274,7 +253,6 @@ class PlacesService: PlacesServiceProtocol {
         if useCache, 
            let cachedData = placesCache[cacheKey],
            Date().timeIntervalSince(cachedData.timestamp) < cacheExpirationTime {
-            logger.notice("Using cached places data for location: \(location.latitude), \(location.longitude)")
             return Just(cachedData.places)
                 .setFailureType(to: Error.self)
                 .eraseToAnyPublisher()
@@ -295,8 +273,6 @@ class PlacesService: PlacesServiceProtocol {
             minimumRating: nil
         )
         
-        logger.notice("Fetching nearby places for location: \(location.latitude), \(location.longitude)")
-        
         // Since we need to use POST but the NetworkService only has fetchWithPublisher for GET,
         // we'll use a Future to wrap our async call
         return Future<[Place], Error> { [weak self] promise in
@@ -316,11 +292,9 @@ class PlacesService: PlacesServiceProtocol {
                     
                     // Cache the results
                     self.placesCache[cacheKey] = (places: response.results, timestamp: Date())
-                    self.logger.notice("Cached \(response.results.count) places for location: \(location.latitude), \(location.longitude)")
                     
                     promise(.success(response.results))
                 } catch {
-                    self.logger.error("Error fetching places: \(error.localizedDescription)")
                     promise(.failure(self.mapToPlacesServiceError(error)))
                 }
             }
@@ -354,14 +328,10 @@ class PlacesService: PlacesServiceProtocol {
         
         if let priceLevels = requestBody.priceLevels, !priceLevels.isEmpty {
             filterComponents.append("priceLevels=\(priceLevels.sorted().map { String($0) }.joined(separator: "-"))")
-            logger.notice("Sending price levels in request: \(priceLevels)")
-        } else {
-            logger.notice("No price levels in request")
         }
         
         if let minimumRating = requestBody.minimumRating, minimumRating > 0 {
             filterComponents.append("minimumRating=\(minimumRating)")
-            logger.notice("Sending minimum rating in request: \(minimumRating)")
         }
         
         if let radius = requestBody.radius {
@@ -386,13 +356,6 @@ class PlacesService: PlacesServiceProtocol {
         )
         
         do {
-            // Log the complete request body for debugging
-            let encoder = JSONEncoder()
-            if let jsonData = try? encoder.encode(modifiedRequestBody),
-               let jsonString = String(data: jsonData, encoding: .utf8) {
-                logger.notice("Full request body: \(jsonString)")
-            }
-            
             let response: PlacesResponse = try await networkService.post(
                 endpoint: .placeSearch,
                 body: modifiedRequestBody,
@@ -400,22 +363,11 @@ class PlacesService: PlacesServiceProtocol {
                 authToken: nil
             )
             
-            // Log the response details
-            logger.notice("Received \(response.results.count) places from API, cacheHit: \(response.cacheHit)")
-            
-            // Log the first few places to verify what we're getting
-            if !response.results.isEmpty {
-                let samplePlaces = response.results.prefix(min(3, response.results.count))
-                logger.notice("Sample places received: \(samplePlaces.map { $0.id })")
-            }
-            
             // Cache the results
             placesCache[cacheKey] = (places: response.results, timestamp: Date())
-            logger.notice("Cached \(response.results.count) filtered places")
             
             return response
         } catch {
-            logger.error("Error fetching places with filters: \(error.localizedDescription)")
             throw mapToPlacesServiceError(error)
         }
     }
@@ -423,7 +375,6 @@ class PlacesService: PlacesServiceProtocol {
     /// Clears the places cache
     @MainActor func clearCache() {
         placesCache.removeAll()
-        logger.notice("Places cache cleared")
     }
     
     // MARK: - Private Methods

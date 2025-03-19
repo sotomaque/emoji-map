@@ -27,8 +27,7 @@ class SimplifiedTest: XCTestCase {
             var place = Place(id: "test_place", emoji: "🍔", location: location)
             place.displayName = "Test Place"
             
-            viewModel.places = [place]
-            viewModel.filteredPlaces = [place]
+            viewModel.setPlaces([place])
         }
         
         // This should be called with MainActor.run since it's a @MainActor method
