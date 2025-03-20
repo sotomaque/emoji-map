@@ -74,9 +74,22 @@ struct PlaceDetailView: View {
                         }
                         
                         if let primaryType = viewModel.place.primaryTypeDisplayName {
-                            Text(primaryType)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
+                            HStack(spacing: 4) {
+                                Text(primaryType)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                                if let priceLevel = viewModel.place.priceLevel {
+                                    Text("·")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    
+                                    Text(String(repeating: "$", count: min(priceLevel, 5)))
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                        .fontWeight(.semibold)
+                                }
+                            }
                         } else {
                             // Shimmer effect for loading type
                             ShimmerView()
@@ -86,31 +99,18 @@ struct PlaceDetailView: View {
                         
                         // Rating stars
                         if let rating = viewModel.place.rating {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 2) {
                                 // Show actual stars
-                                HStack(spacing: 1) {
-                                    ForEach(1...5, id: \.self) { star in
-                                        Image(systemName: star <= Int(rating) ? "star.fill" : "star")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.yellow)
-                                    }
+                                ForEach(1...5, id: \.self) { star in
+                                    Image(systemName: star <= Int(rating) ? "star.fill" : "star")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.yellow)
                                 }
                                 
                                 if let userRatingCount = viewModel.place.userRatingCount {
-                                    Text("(\(userRatingCount))")
+                                    Text(formatRatingCount(userRatingCount))
                                         .font(.caption)
                                         .foregroundColor(.secondary)
-                                }
-                                
-                                if let priceLevel = viewModel.place.priceLevel {
-                                    Text("•")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                        .padding(.horizontal, 2)
-                                    
-                                    Text(String(repeating: "$", count: priceLevel))
-                                        .font(.caption)
-                                        .fontWeight(.semibold)
                                 }
                             }
                             .padding(.top, 2)
@@ -258,32 +258,8 @@ struct PlaceDetailView: View {
                         .padding(.horizontal)
                         
                         ForEach(reviews.prefix(3)) { review in
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    // Rating stars
-                                    HStack(spacing: 2) {
-                                        ForEach(1...5, id: \.self) { star in
-                                            Image(systemName: star <= review.rating ? "star.fill" : "star")
-                                                .font(.caption)
-                                                .foregroundColor(.yellow)
-                                        }
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    Text(review.relativePublishTimeDescription)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                
-                                Text(review.text.text)
-                                    .font(.subheadline)
-                                    .lineLimit(3)
-                            }
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
-                            .padding(.horizontal)
+                            ExpandableReview(review: review)
+                                .padding(.horizontal)
                         }
                     }
                 } else if viewModel.isLoadingDetails {
@@ -434,6 +410,19 @@ struct PlaceDetailView: View {
             viewModel.fetchPlaceData()
         }
     }
+    
+    // Format large numbers with K/M suffix for better display
+    func formatRatingCount(_ count: Int) -> String {
+        if count >= 1_000_000 {
+            let formatted = Double(count) / 1_000_000.0
+            return String(format: "(%.1fM)", formatted)
+        } else if count >= 1_000 {
+            let formatted = Double(count) / 1_000.0
+            return String(format: "(%.1fK)", formatted)
+        } else {
+            return "(\(count))"
+        }
+    }
 }
 
 // Helper view for feature badges
@@ -444,13 +433,16 @@ struct FeatureBadge: View {
     
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .foregroundColor(.white)
-                .padding(6)
-                .background(
-                    Circle()
-                        .fill(color)
-                )
+            // Fixed width container for the icon to ensure consistent spacing
+            ZStack {
+                Circle()
+                    .fill(color)
+                    .frame(width: 30, height: 30)
+                
+                Image(systemName: systemImage)
+                    .foregroundColor(.white)
+                    .font(.system(size: 14))
+            }
             
             Text(text)
                 .font(.subheadline)
@@ -617,6 +609,254 @@ struct ShimmerView: View {
     }
 }
 
-#Preview {
-    PlaceSheet(place: Place(id: "preview-id", emoji: "🏠", location: Place.Location(latitude: 37.7749, longitude: -122.4194)), viewModel: HomeViewModel(placesService: PlacesService(), userPreferences: UserPreferences()))
-} 
+// Expandable review component
+struct ExpandableReview: View {
+    let review: PlaceDetails.Review
+    @State private var isExpanded = false
+    @State private var showReadMoreButton = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Review header with rating and timestamp
+            HStack {
+                // Rating stars
+                HStack(spacing: 2) {
+                    ForEach(1...5, id: \.self) { star in
+                        Image(systemName: star <= review.rating ? "star.fill" : "star")
+                            .font(.caption)
+                            .foregroundColor(.yellow)
+                    }
+                }
+                
+                Spacer()
+                
+                Text(review.relativePublishTimeDescription)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            // Review text with expansion capability
+            VStack(alignment: .leading, spacing: 4) {
+                Text(review.text.text)
+                    .font(.subheadline)
+                    .lineLimit(isExpanded ? nil : 3)
+                    .background(
+                        // Use GeometryReader to detect if text is truncated
+                        GeometryReader { geometry in
+                            Color.clear
+                                .onAppear {
+                                    // Calculate if we need a "Read More" button by checking text height
+                                    let textHeight = calculateTextHeight(text: review.text.text, font: UIFont.preferredFont(forTextStyle: .subheadline), width: geometry.size.width)
+                                    let lineHeight = UIFont.preferredFont(forTextStyle: .subheadline).lineHeight
+                                    showReadMoreButton = textHeight > lineHeight * 3.5
+                                }
+                        }
+                    )
+                
+                if showReadMoreButton {
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            isExpanded.toggle()
+                        }
+                    }) {
+                        Text(isExpanded ? "Read less" : "Read more")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.blue)
+                            .padding(.top, 4)
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(8)
+        .animation(.easeInOut(duration: 0.2), value: isExpanded)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if showReadMoreButton {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    isExpanded.toggle()
+                }
+            }
+        }
+    }
+    
+    // Helper function to calculate text height
+    private func calculateTextHeight(text: String, font: UIFont, width: CGFloat) -> CGFloat {
+        let constraintRect = CGSize(width: width, height: .greatestFiniteMagnitude)
+        let boundingBox = text.boundingRect(
+            with: constraintRect,
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font],
+            context: nil
+        )
+        return boundingBox.height
+    }
+}
+
+#Preview("Regular Values") {
+    PlaceSheet(
+        place: Place(
+            id: "preview-id-1",
+            emoji: "🏠",
+            location: Place.Location(latitude: 37.7749, longitude: -122.4194),
+            photos: [
+                "https://images.unsplash.com/photo-1551504734-5ee1c4a1479b",
+                "https://images.unsplash.com/photo-1565299715199-866c917206bb"
+            ],
+            displayName: "Regular Restaurant",
+            rating: 4.5,
+            reviews: [
+                PlaceDetails.Review(
+                    name: "reviewer1",
+                    relativePublishTimeDescription: "2 weeks ago",
+                    rating: 4,
+                    text: PlaceDetails.Review.TextContent(text: "Great food and atmosphere! The tacos were delicious and the service was excellent."),
+                    originalText: nil
+                ),
+                PlaceDetails.Review(
+                    name: "reviewer2",
+                    relativePublishTimeDescription: "1 month ago",
+                    rating: 5,
+                    text: PlaceDetails.Review.TextContent(text: "Best Mexican food in the area. I recommend the enchiladas."),
+                    originalText: nil
+                )
+            ],
+            priceLevel: 2,
+            userRatingCount: 345,
+            openNow: true,
+            primaryTypeDisplayName: "Mexican Food",
+            takeout: true,
+            dineIn: true,
+            outdoorSeating: false,
+            servesCoffee: false,
+            goodForGroups: true
+        )
+    )
+}
+       
+#Preview("High Rating Count") {
+        // Preview with high user rating count
+        PlaceSheet(
+            place: Place(
+                id: "preview-id-2",
+                emoji: "🍕",
+                location: Place.Location(latitude: 37.7749, longitude: -122.4194),
+                photos: [
+                    "https://images.unsplash.com/photo-1513104890138-7c749659a591",
+                    "https://images.unsplash.com/photo-1593560708920-61dd98c46a4e",
+                    "https://images.unsplash.com/photo-1571407970349-bc81e7e96d47"
+                ],
+                displayName: "Popular Restaurant",
+                rating: 4.7,
+                reviews: [
+                    PlaceDetails.Review(
+                        name: "reviewer1",
+                        relativePublishTimeDescription: "3 days ago",
+                        rating: 5,
+                        text: PlaceDetails.Review.TextContent(text: "Amazing pizza, the crust is perfect! Definitely try the pepperoni special."),
+                        originalText: nil
+                    ),
+                    PlaceDetails.Review(
+                        name: "reviewer2",
+                        relativePublishTimeDescription: "2 weeks ago",
+                        rating: 4,
+                        text: PlaceDetails.Review.TextContent(text: "Good pizza but gets really busy on weekends. Call ahead for takeout."),
+                        originalText: nil
+                    ),
+                    PlaceDetails.Review(
+                        name: "reviewer3",
+                        relativePublishTimeDescription: "1 month ago",
+                        rating: 5,
+                        text: PlaceDetails.Review.TextContent(text: "Best pizza in the city. The garlic knots are also amazing!"),
+                        originalText: nil
+                    )
+                ],
+                priceLevel: 3,
+                userRatingCount: 15423,
+                openNow: true,
+                primaryTypeDisplayName: "Pizza",
+                delivery: true,
+                dineIn: true,
+                outdoorSeating: true,
+                servesCoffee: false,
+                goodForGroups: true
+            )
+        )
+    }
+      
+#Preview("Very High Values") {
+    // Preview with very high user rating count and high price
+    PlaceSheet(
+        place: Place(
+            id: "preview-id-3",
+            emoji: "🍷",
+            location: Place.Location(latitude: 37.7749, longitude: -122.4194),
+            photos: [
+                "https://images.unsplash.com/photo-1414235077428-338989a2e8c0",
+                "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4",
+                "https://images.unsplash.com/photo-1424847651672-bf20a4b0982b"
+            ],
+            displayName: "Luxury Restaurant",
+            rating: 4.9,
+            reviews: [
+                PlaceDetails.Review(
+                    name: "reviewer1",
+                    relativePublishTimeDescription: "1 week ago",
+                    rating: 5,
+                    text: PlaceDetails.Review.TextContent(text: "Exceptional dining experience. The chef's tasting menu was outstanding and the wine pairing was perfect."),
+                    originalText: nil
+                ),
+                PlaceDetails.Review(
+                    name: "reviewer2",
+                    relativePublishTimeDescription: "2 months ago",
+                    rating: 5,
+                    text: PlaceDetails.Review.TextContent(text: "Worth every penny. The service is impeccable and the food is a culinary masterpiece."),
+                    originalText: nil
+                )
+            ],
+            priceLevel: 5,
+            userRatingCount: 2345678,
+            openNow: false,
+            primaryTypeDisplayName: "Fine Dining",
+            dineIn: true,
+            outdoorSeating: false,
+            servesCoffee: true,
+            goodForGroups: false
+        )
+    )
+}
+        
+#Preview("Low Values") {
+    // Preview with low values
+    PlaceSheet(
+        place: Place(
+            id: "preview-id-4",
+            emoji: "🍦",
+            location: Place.Location(latitude: 37.7749, longitude: -122.4194),
+            photos: [
+                "https://images.unsplash.com/photo-1501443762994-82bd5dace89a"
+            ],
+            displayName: "New Ice Cream Shop",
+            rating: 3.0,
+            reviews: [
+                PlaceDetails.Review(
+                    name: "reviewer1",
+                    relativePublishTimeDescription: "5 days ago",
+                    rating: 3,
+                    text: PlaceDetails.Review.TextContent(text: "Decent ice cream but limited flavors. Hope they expand their menu soon."),
+                    originalText: nil
+                )
+            ],
+            priceLevel: 1,
+            userRatingCount: 12,
+            openNow: true,
+            primaryTypeDisplayName: "Ice Cream",
+            takeout: true,
+            dineIn: false,
+            servesDessert: true,
+            goodForGroups: false
+        )
+    )
+}

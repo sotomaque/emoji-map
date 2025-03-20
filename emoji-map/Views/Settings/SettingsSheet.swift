@@ -160,6 +160,26 @@ struct SettingsSheet: View {
                         .background(Color(.systemGray6))
                         .cornerRadius(8)
                         
+                        // Account Deletion Button
+                        Button(action: {
+                            if let url = URL(string: "\(Configuration.backendURL)/account") {
+                                UIApplication.shared.open(url)
+                                logger.notice("Opening account deletion page at \(url)")
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: "person.crop.circle.badge.minus")
+                                    .foregroundColor(.red)
+                                Text("Manage My Account")
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        
                         // Log Out Button
                         Button(action: {
                             Task {
