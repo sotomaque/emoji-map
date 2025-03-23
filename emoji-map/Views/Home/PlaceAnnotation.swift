@@ -12,6 +12,7 @@ struct PlaceAnnotation: View {
     let isFavorite: Bool
     let userRating: Int
     let isLoading: Bool
+    let isHighlighted: Bool
     let onTap: () -> Void
     
     // Animation states
@@ -20,11 +21,12 @@ struct PlaceAnnotation: View {
     @State private var rotation = Double.random(in: -20...20)
     
     // Initialize with default userRating of 0 for backward compatibility
-    init(emoji: String, isFavorite: Bool, userRating: Int = 0, isLoading: Bool, onTap: @escaping () -> Void) {
+    init(emoji: String, isFavorite: Bool, userRating: Int = 0, isLoading: Bool, isHighlighted: Bool = false, onTap: @escaping () -> Void) {
         self.emoji = emoji
         self.isFavorite = isFavorite
         self.userRating = userRating
         self.isLoading = isLoading
+        self.isHighlighted = isHighlighted
         self.onTap = onTap
     }
     
@@ -33,21 +35,28 @@ struct PlaceAnnotation: View {
             VStack(spacing: 0) {
                
                 ZStack {
-                    // Emoji
+                    // Background for highlighted state
+                    if isHighlighted {
+                        Circle()
+                            .fill(Color.blue.opacity(0.3))
+                            .frame(width: 54, height: 54)
+                            .shadow(color: .blue, radius: 4, x: 0, y: 0)
+                    }
                     
+                    // Emoji
                     Text(emoji)
-                        .font(.system(size: 30))
-                        .frame(width: 40, height: 40)
+                        .font(.system(size: isHighlighted ? 40 : 30))
+                        .frame(width: isHighlighted ? 50 : 40, height: isHighlighted ? 50 : 40)
                         .background(
                             isFavorite ?
                             Circle()
                                 .fill(Color.yellow.opacity(0.3))
-                                .frame(width: 44, height: 44)
+                                .frame(width: isHighlighted ? 54 : 44, height: isHighlighted ? 54 : 44)
                                 .scaleEffect(animateIn ? 1 : 0)
                                 .animation(.spring(response: 0.5, dampingFraction: 0.6).delay(0.1), value: animateIn)
                             : nil
                         )
-                        .scaleEffect(bounce ? 1.1 : 1.0)
+                        .scaleEffect((isHighlighted && animateIn) ? 1.1 : (bounce ? 1.1 : 1.0))
                         .rotationEffect(.degrees(animateIn ? 0 : rotation))
                         .animation(
                             bounce ?
@@ -73,7 +82,7 @@ struct PlaceAnnotation: View {
                        .padding(.vertical, 2)
                        .background(Color.black.opacity(0.6))
                        .cornerRadius(8)
-                       .offset(x: 14, y: -14)
+                       .offset(x: isHighlighted ? 18 : 14, y: isHighlighted ? -18 : -14)
                        .opacity(animateIn ? 1 : 0)
                        .scaleEffect(animateIn ? 1 : 0.5)
                        .animation(.spring(response: 0.4, dampingFraction: 0.7).delay(0.2), value: animateIn)
@@ -86,6 +95,7 @@ struct PlaceAnnotation: View {
             .opacity(isLoading ? 0.6 : (animateIn ? 1.0 : 0.0))
             .animation(.spring(response: 0.5, dampingFraction: 0.7), value: animateIn)
             .animation(.easeInOut(duration: 0.3), value: isLoading)
+            .animation(.spring(response: 0.4, dampingFraction: 0.6), value: isHighlighted)
         }
         .buttonStyle(PlainButtonStyle())
         .onAppear {
@@ -106,6 +116,15 @@ struct PlaceAnnotation: View {
                 }
             }
         }
+        .onChange(of: isHighlighted) { newValue in
+            if newValue {
+                // Do a quick bounce when becoming highlighted
+                bounce = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    bounce = false
+                }
+            }
+        }
     }
 }
 
@@ -113,7 +132,7 @@ struct PlaceAnnotation: View {
     VStack(spacing: 20) {
         PlaceAnnotation(emoji: "🍕", isFavorite: true, userRating: 0, isLoading: false) {}
         PlaceAnnotation(emoji: "🍺", isFavorite: false, userRating: 3, isLoading: false) {}
-        PlaceAnnotation(emoji: "🍺", isFavorite: true, userRating: 3, isLoading: false) {}
+        PlaceAnnotation(emoji: "🍺", isFavorite: true, userRating: 3, isLoading: false, isHighlighted: true) {}
         PlaceAnnotation(emoji: "🍣", isFavorite: true, userRating: 5, isLoading: true) {}
     }
     .padding()
