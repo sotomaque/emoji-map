@@ -52,7 +52,6 @@ struct CategorySelector: View {
     @State private var isShuffleActive: Bool = false
     
     // Grid view state
-    @State private var showGridView: Bool = false
     @State private var gridOriginRect: CGRect = .zero
     @GestureState private var longPressActive = false
     
@@ -132,7 +131,7 @@ struct CategorySelector: View {
                                             // Haptic feedback when showing grid
                                             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                                             withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-                                                showGridView = true
+                                                viewModel.isCategoryGridViewVisible = true
                                             }
                                         }
                                 )
@@ -190,7 +189,7 @@ struct CategorySelector: View {
                                                 // Haptic feedback when showing grid
                                                 UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                                                 withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-                                                    showGridView = true
+                                                    viewModel.isCategoryGridViewVisible = true
                                                 }
                                             }
                                     )
@@ -313,20 +312,11 @@ struct CategorySelector: View {
             .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
             
             // MARK: - Grid View Overlay
-            if showGridView {
-                Color.black.opacity(0.3)
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            showGridView = false
-                        }
-                    }
-                
+            if viewModel.isCategoryGridViewVisible {
                 CategoryGridView(
                     viewModel: viewModel,
                     categories: categories,
-                    showGridView: $showGridView,
+                    showGridView: $viewModel.isCategoryGridViewVisible,
                     originRect: gridOriginRect
                 )
                 .transition(.asymmetric(
@@ -342,7 +332,7 @@ struct CategorySelector: View {
 struct CategoryGridView: View {
     @ObservedObject var viewModel: HomeViewModel
     let categories: [(key: Int, emoji: String, name: String)]
-    @Binding var showGridView: Bool
+    @Binding var showGridView: Bool  // This is bound to viewModel.isCategoryGridViewVisible
     let originRect: CGRect
     
     // Haptic feedback
@@ -368,7 +358,7 @@ struct CategoryGridView: View {
                 
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        showGridView = false
+                        viewModel.isCategoryGridViewVisible = false
                     }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -383,12 +373,12 @@ struct CategoryGridView: View {
             Button {
                 selectionFeedback.impactOccurred(intensity: 0.8)
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    viewModel.toggleAllCategories()
+                    viewModel.togglePendingAllCategories()
                 }
             } label: {
                 HStack {
                     AllCategoriesButton(
-                        isSelected: viewModel.isAllCategoriesMode,
+                        isSelected: viewModel.isPendingAllCategoriesMode,
                         isLoading: viewModel.isLoading
                     )
                     
@@ -398,7 +388,7 @@ struct CategoryGridView: View {
                     
                     Spacer()
                     
-                    if viewModel.isAllCategoriesMode {
+                    if viewModel.isPendingAllCategoriesMode {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.accentColor)
                     }
@@ -419,12 +409,12 @@ struct CategoryGridView: View {
                         let emoji = category.emoji
                         let categoryName = category.name
                         let categoryKey = category.key
-                        let isSelected = viewModel.selectedCategoryKeys.contains(categoryKey) && !viewModel.isAllCategoriesMode
+                        let isSelected = viewModel.pendingCategoryKeys.contains(categoryKey) && !viewModel.isPendingAllCategoriesMode
                         
                         Button {
                             selectionFeedback.impactOccurred(intensity: 0.8)
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                viewModel.toggleCategory(key: categoryKey, emoji: emoji)
+                                viewModel.togglePendingCategory(key: categoryKey)
                             }
                         } label: {
                             VStack(spacing: 8) {
@@ -449,11 +439,13 @@ struct CategoryGridView: View {
             
             // Apply button
             Button {
+                // Apply pending selections then dismiss
+                viewModel.applyPendingCategories()
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showGridView = false
+                    viewModel.isCategoryGridViewVisible = false
                 }
             } label: {
-                Text("Apply (\(viewModel.isAllCategoriesMode ? "All" : "\(viewModel.selectedCategoryKeys.count)"))")
+                Text("Apply (\(viewModel.isPendingAllCategoriesMode ? "All" : "\(viewModel.pendingCategoryKeys.count)"))")
                     .font(.headline)
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
@@ -469,11 +461,11 @@ struct CategoryGridView: View {
         .background(
             RoundedRectangle(cornerRadius: 24)
                 .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
         )
         .frame(width: min(UIScreen.main.bounds.width - 32, 400))
         .onAppear {
             selectionFeedback.prepare()
+            viewModel.initializePendingCategories()
         }
     }
 }

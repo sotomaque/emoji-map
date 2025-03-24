@@ -107,6 +107,19 @@ struct Home: View {
             }
             .ignoresSafeArea(edges: .top)
             
+            // Add a transparent overlay on top of the map ONLY when grid view is visible
+            // This allows normal map interaction when grid is hidden
+            if viewModel.isCategoryGridViewVisible {
+                Color.black.opacity(0.3)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            viewModel.isCategoryGridViewVisible = false
+                        }
+                    }
+                    .ignoresSafeArea()
+            }
+            
             // UI Overlay
             GeometryReader { geometry in
                 VStack(spacing: 0) {
