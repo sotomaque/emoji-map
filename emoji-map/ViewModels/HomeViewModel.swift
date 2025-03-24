@@ -91,6 +91,11 @@ class HomeViewModel: ObservableObject {
     @Published var selectedCategoryKeys: Set<Int> = []
     @Published var isAllCategoriesMode: Bool = true
     @Published var showFavoritesOnly: Bool = false
+    @Published var isCategoryGridViewVisible: Bool = false // Track grid view visibility
+    
+    // Temporary category selections for grid view
+    @Published var pendingCategoryKeys: Set<Int> = []
+    @Published var isPendingAllCategoriesMode: Bool = true
     
     // Filter state
     @Published var selectedPriceLevels: Set<Int> = []
@@ -1129,6 +1134,57 @@ class HomeViewModel: ObservableObject {
     private func resetNetworkFilteredPlaces() {
         networkFilteredPlaceIds.removeAll()
         logger.notice("Reset network filtered place IDs")
+    }
+    
+    // Initialize grid view with current category selections
+    func initializePendingCategories() {
+        pendingCategoryKeys = selectedCategoryKeys
+        isPendingAllCategoriesMode = isAllCategoriesMode
+    }
+    
+    // Toggle a category in pending selections (for grid view)
+    func togglePendingCategory(key: Int) {
+        if pendingCategoryKeys.contains(key) {
+            pendingCategoryKeys.remove(key)
+        } else {
+            pendingCategoryKeys.insert(key)
+        }
+        
+        // If no categories are selected, switch to "All" mode
+        if pendingCategoryKeys.isEmpty {
+            isPendingAllCategoriesMode = true
+        } else {
+            isPendingAllCategoriesMode = false
+        }
+    }
+    
+    // Toggle all categories mode in pending selections
+    func togglePendingAllCategories() {
+        isPendingAllCategoriesMode.toggle()
+        // If switching to "All" mode, clear the selected categories
+        if isPendingAllCategoriesMode {
+            pendingCategoryKeys.removeAll()
+        }
+    }
+    
+    // Apply pending category selections to actual selections
+    func applyPendingCategories() {
+        selectedCategoryKeys = pendingCategoryKeys
+        isAllCategoriesMode = isPendingAllCategoriesMode
+        
+        // Update filters based on new selections
+        if isAllCategoriesMode {
+            if !hasNetworkDependentFilters {
+                updateFilteredPlaces()
+            } else {
+                updateFilteredPlaces()
+            }
+        } else {
+            if hasNetworkDependentFilters {
+                resetNetworkFilteredPlaces()
+            }
+            fetchPlacesByCategories()
+        }
     }
     
 }
