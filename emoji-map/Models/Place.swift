@@ -100,7 +100,7 @@ struct Place: Identifiable, Codable, Equatable {
 // Extension to make Place usable as a map annotation
 extension Place {
     @MainActor
-    func mapAnnotation(onTap: @escaping (Place) -> Void) -> some MapContent {
+    func mapAnnotation(onTap: @escaping (Place) -> Void, isHighlighted: Bool = false) -> some MapContent {
         Annotation(coordinate: coordinate) {
             // Check if this place is favorited
             let isFavorited = ServiceContainer.shared.userPreferences.isFavorite(placeId: id)
@@ -114,6 +114,7 @@ extension Place {
                 isFavorite: isFavorited,
                 userRating: userRating,
                 isLoading: false,
+                isHighlighted: isHighlighted,
                 onTap: { onTap(self) }
             )
         } label: {
