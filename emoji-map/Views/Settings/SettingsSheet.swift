@@ -16,6 +16,216 @@ import Clerk
 import AuthenticationServices
 import CryptoKit
 
+// User info form for Apple private relay emails
+struct UserInfoSheet: View {
+    @Environment(Clerk.self) private var clerk
+    @ObservedObject var viewModel: HomeViewModel
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    
+    @State private var email: String = ""
+    @State private var firstName: String = ""
+    @State private var lastName: String = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String? = nil
+    
+    // Focus state for managing keyboard navigation
+    @FocusState private var focusedField: Field?
+    
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "UserInfoSheet")
+    
+    // Define focus fields for form navigation
+    enum Field: Hashable {
+        case email
+        case firstName
+        case lastName
+    }
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                // Background color based on color scheme
+                Color(colorScheme == .dark ? .black : .systemGroupedBackground)
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        // Header section
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Additional Information Needed")
+                                .font(.title)
+                                .fontWeight(.bold)
+                            
+                            Text("We need a little more information to complete your signup.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.bottom, 8)
+                        
+                        // Form fields
+                        VStack(spacing: 20) {
+                            // Email Field (Required)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Email")
+                                    .font(.headline)
+                                
+                                TextField("Your email address", text: $email)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .keyboardType(.emailAddress)
+                                    .textContentType(.emailAddress)
+                                    .autocapitalization(.none)
+                                    .autocorrectionDisabled()
+                                    .focused($focusedField, equals: .email)
+                                    .submitLabel(.next)
+                                    .onSubmit {
+                                        focusedField = .firstName
+                                    }
+                            }
+                            
+                            // First Name Field (Optional)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("First Name (Optional)")
+                                    .font(.headline)
+                                
+                                TextField("Your first name", text: $firstName)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .textContentType(.givenName)
+                                    .focused($focusedField, equals: .firstName)
+                                    .submitLabel(.next)
+                                    .onSubmit {
+                                        focusedField = .lastName
+                                    }
+                            }
+                            
+                            // Last Name Field (Optional)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Last Name (Optional)")
+                                    .font(.headline)
+                                
+                                TextField("Your last name", text: $lastName)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .textContentType(.familyName)
+                                    .focused($focusedField, equals: .lastName)
+                                    .submitLabel(.done)
+                                    .onSubmit(submitInfo)
+                            }
+                            
+                            if let errorMessage = errorMessage {
+                                Text(errorMessage)
+                                    .foregroundColor(.red)
+                                    .font(.callout)
+                                    .padding(.vertical, 4)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(.horizontal, 6)
+                        
+                        // Submit button
+                        Button(action: submitInfo) {
+                            ZStack {
+                                Text("Continue")
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(isValidEmail(email) ? Color.accentColor : Color.gray.opacity(0.5))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
+                                
+                                if isLoading {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                }
+                            }
+                        }
+                        .disabled(!isValidEmail(email) || isLoading)
+                        .padding(.top, 16)
+                    }
+                    .padding()
+                    .frame(maxWidth: 500) // Limit width on larger devices
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+            }
+            .navigationTitle("Complete Your Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cancel") {
+                        // Sign out since the user didn't complete profile
+                        Task {
+                            try? await clerk.signOut()
+                            dismiss()
+                        }
+                    }
+                }
+                
+                ToolbarItem(placement: .keyboard) {
+                    HStack {
+                        Spacer()
+                        Button("Done") {
+                            focusedField = nil
+                        }
+                    }
+                }
+            }
+            .onAppear {
+                // Auto-focus the email field when the view appears
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.focusedField = .email
+                }
+            }
+        }
+    }
+    
+    private func isValidEmail(_ email: String) -> Bool {
+        let emailRegEx = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
+        let emailPred = NSPredicate(format: "SELF MATCHES %@", emailRegEx)
+        return emailPred.evaluate(with: email)
+    }
+    
+    private func submitInfo() {
+        guard isValidEmail(email) else { return }
+        
+        // Clear keyboard focus
+        focusedField = nil
+        
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                // Get Clerk service from viewModel
+                let clerkService = DefaultClerkService()
+                
+                // Get auth token using the proper method
+                guard let token = try await clerkService.getSessionToken() else {
+                    errorMessage = "Authentication error. Please try again."
+                    isLoading = false
+                    return
+                }
+                
+                // Send the verification request
+                try await viewModel.verifyUserInfo(
+                    email: email,
+                    firstName: firstName.isEmpty ? nil : firstName,
+                    lastName: lastName.isEmpty ? nil : lastName,
+                    token: token
+                )
+                
+                // Fetch updated user data
+                await viewModel.fetchUserData()
+                
+                // Dismiss the sheet
+                dismiss()
+            } catch {
+                logger.error("Failed to verify user info: \(error.localizedDescription)")
+                errorMessage = "Failed to update profile: \(error.localizedDescription)"
+                isLoading = false
+            }
+        }
+    }
+}
+
 struct SettingsSheet: View {
     // Logger
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "SettingsSheet")
@@ -40,6 +250,9 @@ struct SettingsSheet: View {
     @State private var appleSignInError: String? = nil
     @State private var showAppleSignInError = false
     @State private var currentNonce: String?
+    
+    // State for showing user info form
+    @State private var showUserInfoForm = false
     
     // Consistent height for account section
     private let accountSectionMinHeight: CGFloat = 120
@@ -368,6 +581,9 @@ struct SettingsSheet: View {
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView(userPreferences: userPreferences, isFromSettings: true)
         }
+        .fullScreenCover(isPresented: $showUserInfoForm) {
+            UserInfoSheet(viewModel: viewModel)
+        }
         .alert(isPresented: $showAppleSignInError, content: {
             Alert(
                 title: Text("Sign In Error"),
@@ -429,6 +645,11 @@ struct SettingsSheet: View {
                 // Log credential details for debugging (excluding sensitive info)
                 if let email = credential.email {
                     logger.notice("Apple credential includes email: \(email)")
+                    
+                    // Check if this is a private relay email
+                    if email.hasSuffix("@privaterelay.appleid.com") {
+                        logger.notice("Detected Apple private relay email during sign-in: \(email)")
+                    }
                 } else {
                     logger.notice("Apple credential does not include email")
                 }
@@ -473,6 +694,14 @@ struct SettingsSheet: View {
                 // Use the HomeViewModel method for sign-in
                 do {
                     try await signInWithIdentityToken(idToken)
+                    
+                    // After successful sign-in, check if the user has a private relay email
+                    if let user = clerk.user, 
+                       let email = user.emailAddresses.first?.emailAddress,
+                       email.hasSuffix("@privaterelay.appleid.com") {
+                        showUserInfoForm = true
+                    }
+                    
                     isAppleSignInLoading = false
                 } catch let clerkError {
                     logger.error("Clerk authentication error: \(clerkError.localizedDescription)")
@@ -496,9 +725,6 @@ struct SettingsSheet: View {
     func signInWithIdentityToken(_ idToken: String) async throws {
         // Use the HomeViewModel method for sign-in
         try await viewModel.signInWithApple(idToken: idToken)
-        
-        // After successful sign-in, fetch user data
-        await viewModel.fetchUserData()
     }
 }
 

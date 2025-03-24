@@ -99,6 +99,7 @@ enum APIEndpoint {
     case user
     case favorite
     case rating
+    case userVerify
     
     var path: String {
         switch self {
@@ -114,6 +115,8 @@ enum APIEndpoint {
             return "api/places/favorite"
         case .rating:
             return "api/places/rating"
+        case .userVerify:
+            return "api/user/verify"
         }
     }
 }
