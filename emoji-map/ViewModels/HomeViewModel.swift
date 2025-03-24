@@ -375,8 +375,8 @@ class HomeViewModel: ObservableObject {
         }
     }
     
-    /// Handle sign-in with Apple credentials
-    /// This method moves the sign-in logic from the SettingsSheet to the ViewModel
+    /// Sign in with Apple using the provided identity token
+    @MainActor
     func signInWithApple(idToken: String) async throws {
         logger.notice("Attempting to authenticate with Clerk using Apple ID token")
         do {
@@ -395,7 +395,7 @@ class HomeViewModel: ObservableObject {
     }
     
     /// Generate a secure random nonce for Apple Sign In
-    /// This method is moved from SettingsSheet to make it reusable and keep auth logic in ViewModel
+    /// This method is used for Apple Sign In authentication
     func generateRandomNonce(length: Int = 32) -> String {
         precondition(length > 0)
         let charset: [Character] =
@@ -430,7 +430,7 @@ class HomeViewModel: ObservableObject {
     }
     
     /// Hash a string using SHA256
-    /// This method is moved from SettingsSheet to make it reusable and keep auth logic in ViewModel
+    /// This method is used for Apple Sign In authentication
     func sha256(_ input: String) -> String {
         let inputData = Data(input.utf8)
         let hashedData = SHA256.hash(data: inputData)
@@ -439,6 +439,54 @@ class HomeViewModel: ObservableObject {
         }.joined()
         
         return hashString
+    }
+    
+    /// Verify user information for users who signed in with Apple private relay
+    @MainActor
+    func verifyUserInfo(email: String, firstName: String?, lastName: String?, token: String) async throws {
+        logger.notice("Verifying user info for email \(email)")
+        
+        // Create the request body
+        struct VerifyUserInfoRequest: Encodable {
+            let email: String
+            let firstName: String?
+            let lastName: String?
+        }
+        
+        let requestBody = VerifyUserInfoRequest(
+            email: email,
+            firstName: firstName,
+            lastName: lastName
+        )
+        
+        // Get network service from ServiceContainer
+        let networkService = ServiceContainer.shared.networkService
+        
+        do {
+            // Send a POST request to /api/user/verify
+            // Update the response structure to match what the server actually returns
+            struct VerifyUserResponse: Decodable {
+                let message: String
+                
+                // Consider any response with a message as successful
+                var success: Bool {
+                    return true
+                }
+            }
+            
+            let response: VerifyUserResponse = try await networkService.post(
+                endpoint: .userVerify,
+                body: requestBody,
+                queryItems: nil,
+                authToken: token
+            )
+            
+            logger.notice("User info verified successfully: \(response.message)")
+            
+        } catch {
+            logger.error("Error verifying user info: \(error.localizedDescription)")
+            throw error
+        }
     }
     
     /// Setup location manager and handle location updates
