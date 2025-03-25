@@ -135,7 +135,7 @@ struct PlaceDetailView: View {
                 .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
                 
                 // User Rating section
-                UserRatingView(placeId: place.id, isLoading: viewModel.isLoadingDetails)
+                UserRatingView(placeId: place.id, isLoading: viewModel.isLoadingDetails, place: place, viewModel: viewModel)
                     .padding(.vertical, 12)
                 
                 // Location section
@@ -150,8 +150,16 @@ struct PlaceDetailView: View {
                     
                     Button(action: {
                         // Open in Maps app
-                        let url = URL(string: "maps://?q=\(place.location.latitude),\(place.location.longitude)")!
-                        if UIApplication.shared.canOpenURL(url) {
+                        var mapsUrlString: String
+                        if let placeName = viewModel.place.displayName?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                            // Use q for name and ll for coordinates to match name at location
+                            mapsUrlString = "https://maps.apple.com/?q=\(placeName)&ll=\(viewModel.place.location.latitude),\(viewModel.place.location.longitude)"
+                        } else {
+                            // Fallback to just coordinates if no place name
+                            mapsUrlString = "https://maps.apple.com/?ll=\(viewModel.place.location.latitude),\(viewModel.place.location.longitude)"
+                        }
+                        
+                        if let url = URL(string: mapsUrlString), UIApplication.shared.canOpenURL(url) {
                             UIApplication.shared.open(url)
                         }
                     }) {
@@ -340,6 +348,10 @@ struct PlaceDetailView: View {
                                             EmptyView()
                                         }
                                     }
+                                    .task(id: photoUrl) {
+                                        // Task will be automatically cancelled when view disappears
+                                        // or when photoUrl changes
+                                    }
                                 }
                             }
                             .padding(.horizontal)
@@ -469,6 +481,9 @@ struct HeartButton: View {
     // Place ID
     let placeId: String
     
+    // Shared feedback generator
+    private let feedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
+    
     // Logger
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "HeartButton")
     
@@ -476,19 +491,17 @@ struct HeartButton: View {
         self.placeId = placeId
         // Initialize favorite state from UserPreferences
         self._isFavorite = State(initialValue: ServiceContainer.shared.userPreferences.isFavorite(placeId: placeId))
+        // Prepare feedback generator
+        self.feedbackGenerator.prepare()
     }
     
     var body: some View {
         Button(action: {
-            // Provide haptic feedback
-            let generator = UIImpactFeedbackGenerator(style: .medium)
-            generator.prepare()
-            
             // Toggle favorite status in UserPreferences
             isFavorite = userPreferences.toggleFavorite(placeId: placeId)
             
             // Trigger haptic feedback
-            generator.impactOccurred()
+            feedbackGenerator.impactOccurred()
             
             logger.notice("Heart button clicked for place ID: \(placeId), favorite: \(isFavorite)")
         }) {
@@ -511,18 +524,30 @@ struct UserRatingView: View {
     let placeId: String
     let isLoading: Bool
     @State private var userRating: Int = 0
+    let place: Place
+    let viewModel: PlaceSheetViewModel
     
     // Access to user preferences
     @ObservedObject private var userPreferences = ServiceContainer.shared.userPreferences
     
+    // For share sheet presentation
+    @State private var isShareSheetPresented = false
+    
+    // Shared feedback generator
+    private let feedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
+    
     // Logger
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "UserRatingView")
     
-    init(placeId: String, isLoading: Bool) {
+    init(placeId: String, isLoading: Bool, place: Place, viewModel: PlaceSheetViewModel) {
         self.placeId = placeId
         self.isLoading = isLoading
+        self.place = place
+        self.viewModel = viewModel
         // Initialize rating from UserPreferences
         self._userRating = State(initialValue: ServiceContainer.shared.userPreferences.getRating(placeId: placeId))
+        // Prepare feedback generator
+        self.feedbackGenerator.prepare()
     }
     
     var body: some View {
@@ -532,6 +557,26 @@ struct UserRatingView: View {
                     .foregroundColor(.yellow)
                 Text("Rate this place")
                     .font(.headline)
+                
+                Spacer()
+                
+                // Share button
+                Button(action: {
+                    isShareSheetPresented = true
+                    feedbackGenerator.impactOccurred()
+                }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                        .padding(10)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.6))
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .transition(.scale.combined(with: .opacity))
             }
             .padding(.horizontal)
             
@@ -556,10 +601,6 @@ struct UserRatingView: View {
                             .font(.system(size: 30))
                             .foregroundColor(.yellow)
                             .onTapGesture {
-                                // Provide haptic feedback
-                                let generator = UIImpactFeedbackGenerator(style: .medium)
-                                generator.prepare()
-                                
                                 // Check if the user is clicking the same rating
                                 if userRating == star {
                                     // Reset the rating to 0 (null)
@@ -574,12 +615,74 @@ struct UserRatingView: View {
                                 }
                                 
                                 // Trigger haptic feedback
-                                generator.impactOccurred()
+                                feedbackGenerator.impactOccurred()
                             }
                     }
                 }
                 .padding(.horizontal)
             }
+        }
+        .sheet(isPresented: $isShareSheetPresented) {
+            ShareSheet(place: place, viewModel: viewModel)
+        }
+    }
+}
+
+// Share sheet view
+struct ShareSheet: UIViewControllerRepresentable {
+    let place: Place
+    let viewModel: PlaceSheetViewModel
+    @Environment(\.presentationMode) var presentationMode
+    
+    // Logger
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.emoji-map", category: "ShareSheet")
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        // Log the place details for debugging
+        logger.notice("Creating share sheet for place: \(viewModel.place.id)")
+        logger.notice("Display name: \(String(describing: viewModel.place.displayName))")
+        logger.notice("Primary type: \(String(describing: viewModel.place.primaryTypeDisplayName))")
+        
+        // Create share items
+        var shareItems: [Any] = []
+        
+        // Share text
+        var shareText = viewModel.place.displayName ?? "Check out this place!"
+        if let type = viewModel.place.primaryTypeDisplayName {
+            shareText += " - \(type)"
+        }
+        shareItems.append(shareText)
+        
+        // Maps URL with place name and coordinates
+        if let placeName = viewModel.place.displayName?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {            
+            // Use q for name and ll for coordinates to match name at location
+            let mapsUrlString = "https://maps.apple.com/?q=\(placeName)&ll=\(viewModel.place.location.latitude),\(viewModel.place.location.longitude)"
+            if let mapsUrl = URL(string: mapsUrlString) {
+                shareItems.append(mapsUrl)
+            }
+        } else {            
+            // Fallback to just coordinates if no place name
+            let mapsUrlString = "https://maps.apple.com/?ll=\(viewModel.place.location.latitude),\(viewModel.place.location.longitude)"
+            if let mapsUrl = URL(string: mapsUrlString) {
+                shareItems.append(mapsUrl)
+            }
+        }
+        
+        // Create activity view controller
+        let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)
+        
+        // Set completion handler
+        activityVC.completionWithItemsHandler = { _, _, _, _ in
+            self.presentationMode.wrappedValue.dismiss()
+        }
+        
+        return activityVC
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+        // Clean up when view controller is dismissed
+        uiViewController.completionWithItemsHandler = { _, _, _, _ in
+            self.presentationMode.wrappedValue.dismiss()
         }
     }
 }
