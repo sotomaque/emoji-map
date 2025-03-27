@@ -203,8 +203,8 @@ struct SettingsSheet: View {
                         // Log Out Button
                         Button(action: {
                             Task {
+                                viewModel.resetUserState()
                                 try? await clerk.signOut()
-                                logger.notice("User signed out")
                             }
                         }) {
                             HStack {
@@ -383,11 +383,13 @@ struct SettingsSheet: View {
             Button("Reset", role: .destructive) {
                 // Reset all settings
                 ServiceContainer.shared.resetAllServices()
+                // Dismiss the settings sheet
+                viewModel.isSettingsSheetPresented = false
                 logger.notice("All settings have been reset")
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will reset all settings to their default values and clear all cached data. This action cannot be undone.")
+            Text("This will reset all settings to their default values, clear all cached data, and sign you out. This action cannot be undone.")
         }
     }
     

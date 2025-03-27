@@ -7,6 +7,7 @@
 
 import Foundation
 import os.log
+import Clerk
 
 @MainActor
 class ServiceContainer {
@@ -60,6 +61,14 @@ class ServiceContainer {
         
         // Clear places cache
         placesService.clearCache()
+        
+        // Reset home view model state
+        homeViewModel.resetAllState()
+        
+        // Sign out of Clerk
+        Task {
+            try? await Clerk.shared.signOut()
+        }
         
         logger.notice("All services reset")
     }

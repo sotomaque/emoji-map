@@ -269,6 +269,59 @@ class HomeViewModel: ObservableObject {
     
     // MARK: - Public Methods
     
+    /// Reset user data and admin state when logging out
+    func resetUserState() {
+        currentUser = nil
+        isAdmin = false
+        isLoadingUser = false
+    }
+    
+    /// Reset all view model state to initial values
+    func resetAllState() {
+        // Reset user state
+        resetUserState()
+        
+        // Reset UI state
+        allPlacesById.removeAll()
+        networkFilteredPlaceIds.removeAll()
+        filteredPlaces.removeAll()
+        isLoading = false
+        errorMessage = nil
+        isFilterSheetPresented = false
+        isSettingsSheetPresented = false
+        selectedPlace = nil
+        isPlaceDetailSheetPresented = false
+        
+        // Reset category selection state
+        selectedCategoryKeys.removeAll()
+        isAllCategoriesMode = true
+        showFavoritesOnly = false
+        isCategoryGridViewVisible = false
+        
+        // Reset pending category selections
+        pendingCategoryKeys.removeAll()
+        isPendingAllCategoriesMode = true
+        
+        // Reset filter state
+        selectedPriceLevels.removeAll()
+        minimumRating = 0
+        useLocalRatings = false
+        showOpenNowOnly = false
+        
+        // Reset category mapping
+        categoryPlaceIds.removeAll()
+        
+        // Reset map state
+        visibleRegion = nil
+        lastFetchedRegion = nil
+        isSuperZoomedIn = false
+        currentViewportRadius = 5000 // Default radius
+        
+        // Cancel any pending tasks
+        regionChangeDebounceTask?.cancel()
+        fetchTask?.cancel()
+    }
+    
     /// Fetch user data from the API
     func fetchUserData(networkService: NetworkServiceProtocol? = nil, clerkService: ClerkService? = nil) async {
         logger.notice("Checking for authenticated user")
