@@ -53,7 +53,7 @@ struct Configuration {
         
         // Otherwise use production URL
         logger.notice("Using production backend URL")
-        return URL(string: "https://emoji-map-next.vercel.app")!
+        return URL(string: "https://emoji-map.com")!
     }
     
     // MARK: - App Configuration
