@@ -357,11 +357,24 @@ class HomeViewModel: ObservableObject {
                     return
                 }
                 
-                logger.notice("Making authenticated request to /api/user with Bearer token")
+                // Get local favorites and ratings
+                let localFavorites = userPreferences.favoritePlaceIds.map { FavoriteSync(placeId: $0) }
+                let localRatings = userPreferences.placeRatings.map { RatingSync(placeId: $0.key, rating: $0.value) }
                 
-                // Make the request to the user endpoint with token-based authentication
-                let userResponse: UserResponse = try await networkService.fetch(
-                    endpoint: .user,
+                // Create request body
+                let requestBody = UserSyncRequest(
+                    favorites: localFavorites,
+                    ratings: localRatings
+                )
+                
+                logger.notice("Making authenticated request to /api/user/sync with Bearer token")
+                logger.notice("Local favorites count: \(localFavorites.count)")
+                logger.notice("Local ratings count: \(localRatings.count)")
+                
+                // Make the request to the user sync endpoint with token-based authentication
+                let userResponse: UserResponse = try await networkService.post(
+                    endpoint: .userSync,
+                    body: requestBody,
                     queryItems: nil,
                     authToken: sessionToken
                 )

@@ -97,6 +97,7 @@ enum APIEndpoint {
     case placeDetails
     case placePhotos
     case user
+    case userSync
     case favorite
     case rating
     
@@ -110,6 +111,8 @@ enum APIEndpoint {
             return "api/places/photos"
         case .user:
             return "api/user"
+        case .userSync:
+            return "api/user/sync"
         case .favorite:
             return "api/places/favorite"
         case .rating:
@@ -604,4 +607,23 @@ class NetworkService: NetworkServiceProtocol {
             logger.error("Unknown decoding error: \(error.localizedDescription)")
         }
     }
+}
+
+// MARK: - Request Types
+
+/// Request type for syncing user data
+struct UserSyncRequest: Codable {
+    let favorites: [FavoriteSync]
+    let ratings: [RatingSync]
+}
+
+/// Favorite sync request type
+struct FavoriteSync: Codable {
+    let placeId: String
+}
+
+/// Rating sync request type
+struct RatingSync: Codable {
+    let placeId: String
+    let rating: Int
 } 

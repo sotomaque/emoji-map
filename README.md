@@ -114,7 +114,7 @@ The app follows a modern MVVM (Model-View-ViewModel) architecture pattern with a
 
 The app uses a modern backend architecture with a RESTful API:
 
-The app communicates with our backend server at `https://emoji-map-next.vercel.app` which provides:
+The app communicates with our backend server at `https://emoji-map.com` which provides:
 
 - Restaurant data from various sources
 - Caching and optimization
