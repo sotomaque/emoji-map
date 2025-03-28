@@ -134,7 +134,6 @@ class HomeViewModel: ObservableObject {
     var allPriceLevelsSelected: Bool {
         // If no price levels are selected, it means we're not filtering by price level
         if self.selectedPriceLevels.isEmpty {
-            logger.notice("No price levels selected - treating as all selected")
             return true
         }
         
@@ -145,7 +144,6 @@ class HomeViewModel: ObservableObject {
             self.selectedPriceLevels.contains(3) &&
             self.selectedPriceLevels.contains(4)
         
-        logger.notice("Price level selection state: \(allSelected ? "all selected" : "partial selection")")
         return allSelected
     }
     
@@ -1251,6 +1249,57 @@ class HomeViewModel: ObservableObject {
             }
             fetchPlacesByCategories()
         }
+    }
+    
+    /// Update user information
+    /// - Parameters:
+    ///   - email: User's email
+    ///   - firstName: User's first name (optional)
+    ///   - lastName: User's last name (optional)
+    ///   - networkService: Optional network service for testing
+    ///   - clerkService: Optional clerk service for testing
+    func updateUserInfo(
+        email: String,
+        firstName: String = "",
+        lastName: String = "",
+        networkService: NetworkServiceProtocol? = nil,
+        clerkService: ClerkService? = nil
+    ) async throws {
+        logger.notice("Updating user information")
+        
+        // Get Clerk instance or use the provided one
+        let clerk = clerkService ?? DefaultClerkService()
+        
+        // Get the network service from the service container or use the provided one
+        let networkService = networkService ?? ServiceContainer.shared.networkService
+        
+        // Get the session token for authentication
+        guard let sessionToken = try await clerk.getSessionToken() else {
+            logger.error("No session token available for authentication")
+            throw NetworkError.unauthorized
+        }
+        
+        // Create request body
+        let requestBody = UserUpdateRequest(
+            email: email,
+            firstName: firstName,
+            lastName: lastName
+        )
+        
+        logger.notice("Making PATCH request to /api/user with Bearer token")
+        
+        // Make the request to update user info
+        let _: UserUpdateResponse = try await networkService.patch(
+            endpoint: .userUpdate,
+            body: requestBody,
+            queryItems: nil,
+            authToken: sessionToken
+        )
+                
+        // After successful update, fetch updated user data
+        await fetchUserData(networkService: networkService, clerkService: clerk)
+        
+        logger.notice("User information updated successfully")
     }
     
 }

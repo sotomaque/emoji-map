@@ -34,6 +34,9 @@ struct SettingsSheet: View {
     
     // State for confirmation dialog
     @State private var showResetConfirmation = false
+    
+    // State for showing additional user info sheet
+    @State private var showAdditionalUserInfo = false
         
     // State for Apple Sign In
     @State private var isAppleSignInLoading = false
@@ -267,6 +270,31 @@ struct SettingsSheet: View {
                             .font(.headline)
                             .foregroundColor(.primary)
                             .padding(.bottom, 4)
+
+                        // Test Additional Info Sheet Button
+                        Button(action: {
+                            logger.notice("Test additional info sheet requested")
+                            showAdditionalUserInfo = true
+                        }) {
+                            HStack {
+                                Image(systemName: "person.crop.circle.badge.plus")
+                                    .foregroundColor(.orange)
+                                Text("Test Additional Info Sheet")
+                                    .fontWeight(.medium)
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                         
                         // Places Cache Info
                         VStack(alignment: .leading, spacing: 8) {
@@ -391,6 +419,9 @@ struct SettingsSheet: View {
         } message: {
             Text("This will reset all settings to their default values, clear all cached data, and sign you out. This action cannot be undone.")
         }
+        .fullScreenCover(isPresented: $showAdditionalUserInfo) {
+            AdditionalUserInfo(viewModel: viewModel)
+        }
     }
     
     // MARK: - Nonce Generation
@@ -416,6 +447,7 @@ struct SettingsSheet: View {
             
             switch result {
             case .success(let authorization):
+                
                 // Access the Apple ID Credential
                 guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
                     logger.error("Unable to get credential of type ASAuthorizationAppleIDCredential")
@@ -427,6 +459,17 @@ struct SettingsSheet: View {
                 
                 logger.notice("Successfully obtained Apple ID credential")
                 logger.notice("User identifier: \(credential.user)")
+                
+                // Add detailed credential logging
+                logger.notice("=== Apple Credential Details ===")
+                logger.notice("User ID: \(credential.user)")
+                logger.notice("Email: \(credential.email ?? "nil")")
+                logger.notice("Full Name: \(credential.fullName?.description ?? "nil")")
+                logger.notice("Authorized Scopes: \(credential.authorizedScopes.map { $0.rawValue })")
+                logger.notice("Authorization Code: \(credential.authorizationCode?.base64EncodedString() ?? "nil")")
+                logger.notice("Identity Token: \(credential.identityToken?.base64EncodedString() ?? "nil")")
+                logger.notice("State: \(credential.state ?? "nil")")
+                logger.notice("=== End Credential Details ===")
                 
                 // Log credential details for debugging (excluding sensitive info)
                 if let email = credential.email {
@@ -474,7 +517,7 @@ struct SettingsSheet: View {
                 
                 // Use the HomeViewModel method for sign-in
                 do {
-                    try await signInWithIdentityToken(idToken)
+                    try await signInWithIdentityToken(idToken, shouldShowAdditionalInfoSheet: credential.email == nil)
                     isAppleSignInLoading = false
                 } catch let clerkError {
                     logger.error("Clerk authentication error: \(clerkError.localizedDescription)")
@@ -495,12 +538,17 @@ struct SettingsSheet: View {
     /// Helper method for testing and code organization
     /// Signs in with an identity token and fetches user data
     @MainActor
-    func signInWithIdentityToken(_ idToken: String) async throws {
+    func signInWithIdentityToken(_ idToken: String, shouldShowAdditionalInfoSheet: Bool) async throws {
         // Use the HomeViewModel method for sign-in
         try await viewModel.signInWithApple(idToken: idToken)
         
         // After successful sign-in, fetch user data
         await viewModel.fetchUserData()
+        
+        // If we should show the additional info sheet, show it
+        if shouldShowAdditionalInfoSheet {
+            showAdditionalUserInfo = true
+        }
     }
 }
 
