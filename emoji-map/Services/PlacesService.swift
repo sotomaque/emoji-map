@@ -354,14 +354,10 @@ class PlacesService: PlacesServiceProtocol {
         
         if let priceLevels = requestBody.priceLevels, !priceLevels.isEmpty {
             filterComponents.append("priceLevels=\(priceLevels.sorted().map { String($0) }.joined(separator: "-"))")
-            logger.notice("Sending price levels in request: \(priceLevels)")
-        } else {
-            logger.notice("No price levels in request")
         }
         
         if let minimumRating = requestBody.minimumRating, minimumRating > 0 {
             filterComponents.append("minimumRating=\(minimumRating)")
-            logger.notice("Sending minimum rating in request: \(minimumRating)")
         }
         
         if let radius = requestBody.radius {
