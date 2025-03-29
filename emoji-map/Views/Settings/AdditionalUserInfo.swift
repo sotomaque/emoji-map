@@ -30,6 +30,14 @@ struct AdditionalUserInfo: View {
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var showError = false
+  
+    @FocusState private var focusedField: Field?
+
+    enum Field {
+        case email
+        case firstName
+        case lastName
+    }
     
     private let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
     
@@ -46,107 +54,141 @@ struct AdditionalUserInfo: View {
             )
             .ignoresSafeArea()
             
-            ScrollView {
-                VStack(spacing: 32) {
-                    // Header
-                    VStack(spacing: 16) {
-                        if #available(iOS 18.0, *) {
-                            Image(systemName: "person.crop.circle.badge.plus")
-                                .font(.system(size: 60))
-                                .foregroundStyle(.blue)
-                                .symbolEffect(.pulse)
-                        } else {
-                            // Fallback on earlier versions
-                            Image(systemName: "person.crop.circle.badge.plus")
-                                .font(.system(size: 60))
-                                .foregroundStyle(.blue)
-                        }
-                        
-                        Text("Complete Your Profile")
-                            .font(.title)
-                            .fontWeight(.bold)
-                        
-                        Text("Help us personalize your experience")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 40)
-                    
-                    // Form
-                    VStack(spacing: 24) {
-                        // Email Field
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Email")
-                                    .font(.headline)
-                                Text("*")
-                                    .foregroundStyle(.red)
-                            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 32) {
+                        // Header
+                        VStack(spacing: 16) {
+                            Image("Logo")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 60, height: 60)
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.blue.opacity(0.2), lineWidth: 2)
+                                )
                             
-                            TextField("Enter your email", text: $email)
-                                .textFieldStyle(TallTextFieldStyle())
-                                .textContentType(.emailAddress)
-                                .keyboardType(.emailAddress)
-                                .autocapitalization(.none)
-                                .onChange(of: email) { _, newValue in
-                                    isEmailValid = newValue.range(of: emailRegex, options: .regularExpression) != nil
+                            Text("Complete Your Profile")
+                                .font(.title)
+                                .fontWeight(.bold)
+                            
+                            Text("Help us personalize your experience")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 40)
+                        
+                        // Form
+                        VStack(spacing: 24) {
+                            // Email Field
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Email")
+                                        .font(.headline)
+                                    Text("*")
+                                        .foregroundStyle(.red)
                                 }
+                                
+                                TextField("Enter your email", text: $email)
+                                    .textFieldStyle(TallTextFieldStyle())
+                                    .textContentType(.emailAddress)
+                                    .keyboardType(.emailAddress)
+                                    .autocapitalization(.none)
+                                    .focused($focusedField, equals: .email)
+                                    .submitLabel(.next)
+                                    .onSubmit {
+                                        focusedField = .firstName
+                                    }
+                                    .onChange(of: email) { _, newValue in
+                                        isEmailValid = newValue.range(of: emailRegex, options: .regularExpression) != nil
+                                    }
+                                
+                                if !email.isEmpty && !isEmailValid {
+                                    Text("Please enter a valid email address")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                }
+                            }
+                            .id("emailField")
                             
-                            if !email.isEmpty && !isEmailValid {
-                                Text("Please enter a valid email address")
-                                    .font(.caption)
-                                    .foregroundStyle(.red)
+                            // First Name Field
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("First Name")
+                                    .font(.headline)
+                                
+                                TextField("Enter your first name", text: $firstName)
+                                    .textFieldStyle(TallTextFieldStyle())
+                                    .textContentType(.givenName)
+                                    .autocapitalization(.words)
+                                    .focused($focusedField, equals: .firstName)
+                                    .submitLabel(.next)
+                                    .onSubmit {
+                                        focusedField = .lastName
+                                    }
+                            }
+                            .id("firstNameField")
+                            
+                            // Last Name Field
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Last Name")
+                                    .font(.headline)
+                                
+                                TextField("Enter your last name", text: $lastName)
+                                    .textFieldStyle(TallTextFieldStyle())
+                                    .textContentType(.familyName)
+                                    .autocapitalization(.words)
+                                    .focused($focusedField, equals: .lastName)
+                                    .submitLabel(.done)
+                                    .onSubmit {
+                                        Task {
+                                            await submitForm()
+                                        }
+                                    }
+                            }
+                            .id("lastNameField")
+                        }
+                        .padding(.horizontal)
+                        
+                        // Submit Button
+                        Button(action: {
+                            Task {
+                                await submitForm()
+                            }
+                        }) {
+                            HStack {
+                                if isSubmitting {
+                                    ProgressView()
+                                        .tint(.white)
+                                } else {
+                                    Text("Continue")
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(isEmailValid ? Color.blue : Color.gray)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                        }
+                        .disabled(!isEmailValid || isSubmitting)
+                        .padding(.horizontal)
+                        .padding(.top, 16)
+                    }
+                }
+                .onChange(of: focusedField) { _, newField in
+                    if let field = newField {
+                        withAnimation {
+                            switch field {
+                            case .email:
+                                proxy.scrollTo("emailField", anchor: .center)
+                            case .firstName:
+                                proxy.scrollTo("firstNameField", anchor: .center)
+                            case .lastName:
+                                proxy.scrollTo("lastNameField", anchor: .center)
                             }
                         }
-                        
-                        // First Name Field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("First Name")
-                                .font(.headline)
-                            
-                            TextField("Enter your first name", text: $firstName)
-                                .textFieldStyle(TallTextFieldStyle())
-                                .textContentType(.givenName)
-                                .autocapitalization(.words)
-                        }
-                        
-                        // Last Name Field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Last Name")
-                                .font(.headline)
-                            
-                            TextField("Enter your last name", text: $lastName)
-                                .textFieldStyle(TallTextFieldStyle())
-                                .textContentType(.familyName)
-                                .autocapitalization(.words)
-                        }
                     }
-                    .padding(.horizontal)
-                    
-                    // Submit Button
-                    Button(action: {
-                        Task {
-                            await submitForm()
-                        }
-                    }) {
-                        HStack {
-                            if isSubmitting {
-                                ProgressView()
-                                    .tint(.white)
-                            } else {
-                                Text("Continue")
-                                    .fontWeight(.semibold)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(isEmailValid ? Color.blue : Color.gray)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                    }
-                    .disabled(!isEmailValid || isSubmitting)
-                    .padding(.horizontal)
-                    .padding(.top, 16)
                 }
             }
         }
@@ -154,6 +196,9 @@ struct AdditionalUserInfo: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "An unknown error occurred")
+        }
+        .onAppear {
+            focusedField = .email
         }
     }
     
